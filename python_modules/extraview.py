@@ -265,6 +265,15 @@ class client:
 	""" Get EV priority field value from string priority"""
 	return self.get_field_value_to_field_key('PRIORITY', priority)
 
+    def close(self, id, comment, fields = {}):
+	""" Close extraview ticket """
+	params = {
+	    'STATUS':			'CLOSED',
+	    'HELP_CUSTOMER_COMMENTS':	comment,
+	    'HELP_CLOSURE_CODE':	self.get_field_value_to_field_key('HELP_CLOSURE_CODE', 'Successful') 
+	}
+	params.update(fields)
 
+	return self.update(id, params)
 
 
