@@ -276,4 +276,21 @@ class client:
 
 	return self.update(id, params)
 
+    def add_resolver_comment(self, id, comment, fields = {}):
+	""" add resolver (admin only) comment extraview ticket """
+	params = {
+	    'COMMENTS':	comment,
+	}
+	params.update(fields)
 
+	return self.update(id, params)
+    def add_user_comment(self, id, comment, fields = {}):
+	""" add comment to user in extraview ticket """
+	params = {
+	    'HELP_CUSTOMER_COMMENTS':	comment,
+	}
+	params.update(fields)
+
+	return self.update(id, params)
+                 
+ 
