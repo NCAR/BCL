@@ -215,46 +215,31 @@ class client:
 
 	return self.http_get(params)
 
-    def assign_group(self, id, group, user):
+    def assign_group(self, id, group, user = None, fields = {}):
 	"""
-	@brief Assign a Given user/group to a EV Issue
+	@brief Assign/transfer a Given user/group to a EV Issue
 	@param id EV issue id
 	@param group Name of the group (note in EV all names are capped)
 	@param user name of user (can be NULL to unassign user)
 	@return ev response or FALSE on error
 	"""
  	grpid = self.get_group_id(group);
-	user = self.get_group_member(group, user);
 
-	if user is None or grpid is None:
-	    return None
+	if user:
+	    user = self.get_group_member(group, user);
 
- 	params = {
-	    'STATUS':		    'ASSIGNED',
-	    'ASSIGNED_TO':	    user,
-	    'HELP_ASSIGN_GROUP':    grpid
-	}              
-
-	return self.update(id, params)
-
-    def transfer_group(self, id, group, user):
-	"""
-	@brief Assign a Given user/group to a EV Issue
-	@param id EV issue id
-	@param group Name of the group (note in EV all names are capped)
-	@param user name of user (can be NULL to unassign user) 
-	"""
- 	grpid = self.get_group_id(group);
-	user = self.get_group_member(group, user);
-
-	if user is None or grpid is None:
+	if grpid is None:
 	    return None
 
  	params = {
 	    'STATUS':		    'TRANSFERRED',
-	    'ASSIGNED_TO':	    user,
 	    'HELP_ASSIGN_GROUP':    grpid
 	}              
+	params.update(fields)
+
+	if not user is None:
+	    params['ASSIGNED_TO']   = user
+	    params['STATUS']	    = 'ASSIGNED',
 
 	return self.update(id, params)
 
@@ -276,3 +261,10 @@ class client:
 
 	return self.http_get_xml(params)
  
+    def get_priority(self, priority):
+	""" Get EV priority field value from string priority"""
+	return self.get_field_value_to_field_key('PRIORITY', priority)
+
+
+
+
