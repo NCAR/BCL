@@ -1,9 +1,13 @@
 #!/usr/bin/python
 import sys
+import syslog
 
 def vlog(level, string):
-    if verbose >= level:
-	print string
+    #global VERBOSE
+    #if VERBOSE >= level:
+    print string
+    if level < 3:
+	syslog.syslog(string)
 
 def elog(string):
     sys.stderr.write('%s\n' % (string))
