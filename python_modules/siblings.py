@@ -8,7 +8,7 @@ import os
 nodes_per_blade = 2
 slots_per_iru = 9
 
-if re.search("laramie", socket.gethostname()) is None:
+if re.search("^la", socket.gethostname()) is None:
     nodes_per_blade = 4
  
 def node_to_tuple(n):
