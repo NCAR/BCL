@@ -185,10 +185,12 @@ class client:
 	grpid = self.get_group_id(group);
 	if not grpid is None:
 	    params['HELP_ASSIGN_GROUP'] = grpid;
+	    params['STATUS']	    = 'TRANSFERRED',
      
 	user = self.get_group_member(group, user);
 	if not user is None:
 	    params['ASSIGNED_TO'] = user; 
+	    params['STATUS']	    = 'ASSIGNED',
 
 	resp = self.http_get(params).text
 	#example response: ID #78512 added.
