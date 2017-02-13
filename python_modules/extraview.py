@@ -139,7 +139,7 @@ class client:
 	    return None
 
 	members = self.get_group_members(group)
-	if members is None:
+	if members is None or user is None:
 	    return None
 
 	for member, name in members.iteritems():
