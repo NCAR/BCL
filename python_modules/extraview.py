@@ -126,12 +126,13 @@ class client:
 
         return self.get_field_allowed('ASSIGNED_TO', 'HELP_ASSIGN_GROUP', id)
 
-    def get_group_member(self, group, user):
+    def get_group_member(self, group, user, allow_nonmember = False):
 	""" 
 	 * @brief Check if user is member of group and get EV name for user
 	 * @param group Name of the group (note in EV all names are capped)
 	 * @param user name of user (can be NULL to unassign user)
 	 * @param EVSETUP extraview setup array
+	 * @param allow_nonmember allow a non-member of group to be returned (EV group membership is not enforced)
 	 * @return user EV name or FALSE on error
 	"""
         id = self.get_group_id(group)
@@ -146,7 +147,10 @@ class client:
 	    if name.lower() == user.lower():
 		return name;
 
-	return None
+	if allow_nonmember:
+	    return user
+	else:
+	    return None
 
     def create(self, originator, group, user, title, description, fields = {}):
 	"""
@@ -187,7 +191,7 @@ class client:
 	    params['HELP_ASSIGN_GROUP'] = grpid;
 	    params['STATUS']	    = 'TRANSFERRED',
      
-	user = self.get_group_member(group, user);
+	user = self.get_group_member(group, user, True);
 	if not user is None:
 	    params['ASSIGNED_TO'] = user; 
 	    params['STATUS']	    = 'ASSIGNED',
