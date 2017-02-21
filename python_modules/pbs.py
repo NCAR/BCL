@@ -86,6 +86,21 @@ def set_online_nodes(nodes, comment):
     """
     return run_task("/opt/pbs/default/bin/pbsnodes -r -C %s %s" % (quote(comment), ' '.join(nodes)) )
            
+def is_pbs_down(states):
+    """ Do the PBS Node states mean node is down """
+    for state in states:
+	if state in [ "offline" , "offline_by_mom" , "down" , "Stale" , "state-unknown" , "maintenance" , "initializing" , "unresolvable" ]:
+	    return True
 
+    return False
+
+def is_pbs_job_excl(states):
+    """ Do the PBS Node states mean node has exclusive job """
+    for state in states:
+	if state in [ "job-exclusive" , "resv-exclusive" , "default_excl" , "default_exclhost" , "force_excl" , "force_exclhost" ]:
+	    return True
+
+    return False
+ 
 
 
