@@ -246,6 +246,8 @@ class client:
 	if not user is None:
 	    params['ASSIGNED_TO']   = user
 	    params['STATUS']	    = 'ASSIGNED',
+	else:
+	    params['ASSIGNED_TO']   = '' #default to no user assigned
 
 	return self.update(id, params)
 
