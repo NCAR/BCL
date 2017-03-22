@@ -1,4 +1,8 @@
 #!/usr/bin/python
+#
+# Filler module to get information about cluster
+# TODO: clean this up and make it load from somewhere intelligently
+#
 import socket
 import re
 
@@ -54,4 +58,14 @@ def get_bmc(node):
     """ get node bmc name """
     
     return "{}-bmc".format(node)
+ 
+def get_sm():
+    """ get smc nodes """
+    
+    host = socket.gethostname()
+
+    if host == 'lamgt':
+	return ['r1lead']
+    elif host == 'chmgt':
+	return ['r1lead', 'r2lead']
  
