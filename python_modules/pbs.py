@@ -27,7 +27,7 @@ def run_task(cmd):
 
 def node_states():
     """ Query Node states from PBS """
-    statesjson = run_task("/opt/pbs/default/bin/pbsnodes -avFdsv -Fjson")
+    statesjson = run_task("/opt/pbs/default/bin/pbsnodes -av -Fjson")
 
     if statesjson is None:
 	return None
