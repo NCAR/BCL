@@ -409,6 +409,33 @@ def save_state():
 #    if state == 'suspect-pending':
 #	STATE['nodes'][node]['state'] = 'suspect' 
 
+def run_parse(dump_dir):
+    """ Run parse mode against a dump directory """
+    global EV, STATE
+
+#ibdiagnet2.aguid   ibdiagnet2.db_csv  ibdiagnet2.fdbs  ibdiagnet2.lst     ibdiagnet2.net_dump    ibdiagnet2.pkey  ibdiagnet2.sm      ibnetdiscover_cache.log  report.txt
+#ibdiagnet2.cables  ibdiagnet2.debug   ibdiagnet2.log   ibdiagnet2.mcfdbs  ibdiagnet2.nodes_info  ibdiagnet2.pm    ibdiag_stdout.txt  ibnetdiscover.log        timestamp.txt
+
+    ports = []
+
+    with open('%s/%s' % (dump_dir,'ibnetdiscover.log') , 'r') as fds:
+        ib_diagnostics.parse_ibnetdiscover_cables(ports, fds.read()) 
+
+    issues = None
+    with open('%s/%s' % (dump_dir,'ibdiagnet2.log') , 'r') as fds:
+	issues = ib_diagnostics.parse_ibdiagnet(ports, fds.read()) 
+
+    vlog(1, str(issues))
+
+    ib_diagnostics.parse_ibdiagnet_csv(ports, '%s/ibdiagnet2.db_csv' % (dump_dir))
+    #ib_diagnostics.parse_ibdiagnet_csv(ports, '%s/ibdiagnet2.db_csv' % (dump_dir))
+
+    #initialize_state()
+    #STATE['ports'] = ports
+    #release_state()
+ 
+ 
+
 def dump_help():
     die_now("""NCAR Bad Cable List Multitool
 
@@ -451,10 +478,8 @@ def dump_help():
     detach: {0} {{node range}} {{detach}} {{extraview ids (comma delimited)}}
 	detach comma seperated list of extraview ticket ids from bad nodes
 
-    auto: {0} {{auto}}
-	auto add any down node in PBS to bad node list
-	check jobs are done for bad nodes in hardware and casg states
-	checks for nodes with invalid power status and bad node them while removing pending status
+    parse: {0} {{parse}} {{path to ib dumps dir}}
+	todo
 
     Environment Variables:
 	VERBOSE=[1-5]
@@ -476,15 +501,15 @@ STATE={}
 """
 LOCK = None
 
-initialize_state()
 EV = extraview_cli.open_extraview()
 
-release_state()
 
 vlog(5, argv)
 
 if len(argv) < 2:
     dump_help() 
+elif argv[1] == 'parse':
+    run_parse(argv[2])  
 #elif argv[1] == 'auto':
 #    run_auto() 
 #elif argv[1] == 'list':
