@@ -11,6 +11,7 @@ import syslog
 import pbs
 import siblings
 import sgi_cluster
+import cluster_info
 import file_locking
 import ib_diagnostics
 
@@ -417,18 +418,26 @@ def run_parse(dump_dir):
 #ibdiagnet2.cables  ibdiagnet2.debug   ibdiagnet2.log   ibdiagnet2.mcfdbs  ibdiagnet2.nodes_info  ibdiagnet2.pm    ibdiag_stdout.txt  ibnetdiscover.log        timestamp.txt
 
     ports = []
+    issues = {'unknown': [], 'counters': [] }
 
     with open('%s/%s' % (dump_dir,'ibnetdiscover.log') , 'r') as fds:
         ib_diagnostics.parse_ibnetdiscover_cables(ports, fds.read()) 
 
-    issues = None
     with open('%s/%s' % (dump_dir,'ibdiagnet2.log') , 'r') as fds:
-	issues = ib_diagnostics.parse_ibdiagnet(ports, fds.read()) 
+	ib_diagnostics.parse_ibdiagnet(ports, issues, fds.read()) 
 
     vlog(1, str(issues))
 
+#PortPhyState
+#2=polling
+#3=disabled
+#PortState
+
     ib_diagnostics.parse_ibdiagnet_csv(ports, '%s/ibdiagnet2.db_csv' % (dump_dir))
-    #ib_diagnostics.parse_ibdiagnet_csv(ports, '%s/ibdiagnet2.db_csv' % (dump_dir))
+
+
+    ibsp = cluster_info.get_ib_speed()
+    ib_diagnostics.find_underperforming_cables ( ports, issues, ibsp['link'], ibsp['width'])
 
     #initialize_state()
     #STATE['ports'] = ports

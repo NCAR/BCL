@@ -22,6 +22,10 @@ def get_bmc(node):
 def get_sm():
     """ get smc nodes """
     return sgi_cluster.get_sm()
+
+def get_ib_speed():
+    """ get Infiniband network speed """
+    return sgi_cluster.get_ib_speed()
     
 def is_mgr():
     """ Is this node the cluster manager """

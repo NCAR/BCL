@@ -68,4 +68,16 @@ def get_sm():
 	return ['r1lead']
     elif host == 'chmgt':
 	return ['r1lead', 'r2lead']
+    return None
+
+def get_ib_speed():
+    """ get Infiniband network speed """
+    
+    host = socket.gethostname()
+
+    if host == 'lamgt':
+	return {'speed': 'EDR', 'link': 25, 'width': '4x'};
+    elif host == 'chmgt':
+	return {'speed': 'EDR', 'link': 25, 'width': '4x'};
+    return None
  

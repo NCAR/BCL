@@ -246,7 +246,7 @@ def parse_ibnetdiscover_cables ( ports, contents ):
 		vlog(3, 'Parse fail: %s' % line )
 def msg_port_pretty_long ( port, why ): 
     """ msg port label with helpful info"""
-    vmsg(1, '%s: %s SPEED=%s LID=%s GUID=%s SN=%s PN=%s' % (
+    vlog(1,'%s: %s SPEED=%s LID=%s GUID=%s SN=%s PN=%s' % (
 	    why,
 	    port_pretty(port),
 	    port['speed'],
@@ -268,7 +268,7 @@ def port_pretty ( port ):
 	return '%s/HCA%s/P%s' % (port['name'], port['hca'], port['port'])
     return '%s/P%s' % (port['name'], port['port']) #tor port
 
-def find_underperforming_cables ( ports, speed, width = "4x"):
+def find_underperforming_cables ( ports, issues, speed, width = "4x"):
     """ Checks all of the ports for any that are not at full width or speed or disabled """
 
     #PhysLinkState:...................LinkUp
@@ -287,31 +287,19 @@ def find_underperforming_cables ( ports, speed, width = "4x"):
 	    msg('Localhost labeled port: %s <-> %s' % (port_pretty(port), 'N/A' if not port['connection'] else port_pretty(port['connection'])))
 
 	if port['connection']: #ignore unconnected ports
-	    if port['speed'] != speed:
-		msg_port_pretty_long(port, 'Underperforming Port')
-	    if port['width'] != width:
-		msg_port_pretty_long(port, 'Underperforming Port')
+	    True
+	    #if port['speed'] != speed:
+	    #    msg_port_pretty_long(port, 'Underperforming Port')
+	    #if port['width'] != width:
+	    #    msg_port_pretty_long(port, 'Underperforming Port')
 	else: #check if unconnected ports are disabled
-		(ret, out, err) = exec_opensm_to_string('/usr/sbin/ibportstate %s %s query' 
-		    % (
-			port['lid'],
-			port['port']
-		    )
-		);
+	    vlog(5, 'down port physstate:%s state:%s' % (port['PortPhyState'],port['PortState']))
+	    if int(port['PortPhyState']) == 3: #physical state is disabled
+		vlog(4, 'disabled %s' % (port))
+		msg_port_pretty_long(port, 'Disabled Port')
 
-		if ret == 0: #this isnt helpful if ibportstate is broke
-		    for line in out.split(os.linesep):
-			match = portstate_regex.match(line)
-			if match:
-			    vlog(1, 'Port %s/%s: %s=%s' % (port['lid'], port['port'], match.group('property'), match.group('value')));
-
-			    if match.group('property') == 'PhysLinkState' and match.group('value') == 'Disabled':
-				msg_port_pretty_long(port, 'Disabled Port')
-
-def parse_ibdiagnet ( ports, contents ):
+def parse_ibdiagnet ( ports, issues, contents ):
     """ Parse the output of ibdiagnet """
-
-    issues = {'unknown': [], 'counters': [] }
 
     ibdiag_line_regex = re.compile(r"""
 	    \s*-[^IW]-\s+	    #find all none Info and Warns
@@ -365,10 +353,10 @@ def parse_ibdiagnet ( ports, contents ):
 			   and lmatch.group('msg') != 'Ports counters Difference Check (during run) finished with errors':
 			       issues['unknown'].append('%s: %s' % (match.group('label'), lmatch.group('msg')))
 
-    return issues
-
 def parse_ibdiagnet_csv ( ports, path_to_csv ):
-    """ Parse the output of ibdiagnet ibdiagnet2.db_csv """
+    """ Parse the output of ibdiagnet ibdiagnet2.db_csv
+	Limited to pulling the cable serials and state out currently
+    """
     csv_mode=None
     csv_headers=None
 
@@ -397,6 +385,12 @@ def parse_ibdiagnet_csv ( ports, path_to_csv ):
 				 if port['guid'] == rowdict['PortGuid'] and port['port'] == rowdict['PortNum']:
 				     #just combine the data into the port
 				     port.update(rowdict);
+			elif csv_mode == 'START_PORTS':
+			    for port in ports:
+				 if port['guid'] == rowdict['PortGuid'] and port['port'] == rowdict['PortNum']:
+				     #just combine the data into the port
+				     port.update(rowdict); 
+
                           
 def find_cable_by_switch_leaf_port ( ports, name, leaf, port ):
     """ Checks all of the ports for any that are not at full width or speed """
