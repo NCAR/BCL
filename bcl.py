@@ -427,9 +427,6 @@ def run_parse(dump_dir):
     with open('%s/%s' % (dump_dir,'ibdiagnet2.log') , 'r') as fds:
 	ib_diagnostics.parse_ibdiagnet(ports, issues, fds.read()) 
 
-
-
-
     ib_diagnostics.parse_ibdiagnet_csv(ports, '%s/ibdiagnet2.db_csv' % (dump_dir))
 
     ibsp = cluster_info.get_ib_speed()

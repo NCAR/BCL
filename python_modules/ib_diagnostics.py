@@ -169,7 +169,7 @@ def parse_port ( label ):
 		'serial' : None,
 		'length' : None,
 		'partnumber' : None,
-		'guid' : None,
+		'guid' : guid,
 		'type' : None,
 		'speed' : None,
 		'width' : None,
@@ -392,21 +392,18 @@ def parse_ibdiagnet ( ports, issues, contents ):
 		   cmatch = ibdiag_line_regex_port.match(lmatch.group('msg'))
 		   lnmatch = ibdiag_line_regex_link.match(lmatch.group('msg'))
 		   if cmatch:
-		       dport = parse_port(cmatch.group('port'))
 		       issues['counters'].append({ 
-			   'port': dport,
+			   'port': parse_resolve_port(ports, cmatch.group('port')),
 			   'counter': cmatch.group('counter'),
 			   'value': cmatch.group('value')
 			   })
 		   elif lnmatch:
- 		       dport = parse_port(lnmatch.group('port'))
+ 		       dport2 = None
 		       if lnmatch.group('port2'):
-			   dport2 = parse_port(lnmatch.group('port2'))
-		       else:
-			   dport2 = None 
+			   dport2 = parse_resolve_port(ports, lnmatch.group('port2'))
 		       issues['counters'].append({ 
-			   'port': dport,
-			   'port2': dport,
+			   'port': parse_resolve_port(ports, lnmatch.group('port')),
+			   'port2': dport2,
 			   'why': lnmatch.group('what')
 			   })
 		   else:
@@ -445,17 +442,11 @@ def parse_ibdiagnet_csv ( ports, path_to_csv ):
 		    else: #data
 			rowdict = dict(zip(csv_headers, row))
 
-			if csv_mode == 'START_CABLE_INFO':
-			    for port in ports:
-				 if port['guid'] == rowdict['PortGuid'] and port['port'] == rowdict['PortNum']:
-				     #just combine the data into the port
-				     port.update(rowdict);
-			elif csv_mode == 'START_PORTS':
-			    for port in ports:
-				 if port['guid'] == rowdict['PortGuid'] and port['port'] == rowdict['PortNum']:
-				     #just combine the data into the port
-				     port.update(rowdict); 
-
+			if csv_mode in [ 'START_CABLE_INFO', 'START_PORTS']:
+			    resolve_update_port(ports, rowdict.update({
+				    'guid': rowdict['PortGuid'],
+				    'port': rowdict['PortNum']
+				}))
                           
 def find_cable_by_switch_leaf_port ( ports, name, leaf, port ):
     """ Checks all of the ports for any that are not at full width or speed """
@@ -466,4 +457,38 @@ def find_cable_by_switch_leaf_port ( ports, name, leaf, port ):
 
     return None
 
+def resolve_port(ports, port):
+    """ Resolves out port from ports list """
+    if not port:
+	return None
 
+    #guid and port known
+    if port['guid'] and port['port']:
+	for pport in ports:
+	    if port['guid'] == pport['guid'] and pport['port'] == pport['port']:
+		return pport
+
+    if port['name'] and port['port']:
+ 	for pport in ports:
+	    if port['name'] == pport['name'] and pport['port'] == pport['port']:
+		return pport
+
+    vlog(4, 'unable to resolve port: {}'.format(port))
+    return None
+ 
+def resolve_update_port(ports, port):
+    """ Resolves out port from ports list and update port dictionary with searched port values """
+    pport = resolve_port(port)
+
+    if pport:
+	pport.update(port);
+
+    return pport
+ 
+def parse_resolve_port(ports, label):
+    """ Parses port label string and then resolves out port from ports list """
+    pport = parse_port(label)
+    if not pport: 
+	return None
+
+    return resolve_port(ports, pport)
