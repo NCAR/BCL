@@ -8,6 +8,7 @@ import re
 import os
 import csv
 import cluster_info
+import traceback
 
 #def exec_opensm_to_string ( cmd ):
 #    """ Runs cmd on openSM host and places Return Value, STDOUT, STDERR into returned list  """
@@ -155,7 +156,7 @@ def parse_port ( label ):
 		leaf = match.group('leaf')
 		port = match.group('port')
 	    else:
-		vlog(5, 'unable to match: %s' % (label))
+		vlog(5, 'unable to parse: %s' % (label))
 		name = label
 
     return {
@@ -195,6 +196,9 @@ def register_cable ( ports, port1, port2 ):
 	ports.append(port2)
 
 def parse_ibnetdiscover_cables ( ports, contents ):
+
+    vlog(4, 'parse_ibnetdiscover_cables()')
+
     """ Parse the output of 'ibnetdiscover -p' 
 
     Two types of line formats:
@@ -296,6 +300,8 @@ def port_pretty ( port ):
 def find_underperforming_cables ( ports, issues, speed, width = "4x"):
     """ Checks all of the ports for any that are not at full width or speed or disabled """
 
+    vlog(4, 'find_underperforming_cables()')
+
     #PhysLinkState:...................LinkUp
     #PhysLinkState:...................Disabled
     #PhysLinkState:...................Polling
@@ -327,18 +333,23 @@ def find_underperforming_cables ( ports, issues, speed, width = "4x"):
 		   'width': port['width']
 		   })        
 	else: #check if unconnected ports are disabled
-	    vlog(5, 'down port physstate:%s state:%s' % (port['PortPhyState'],port['PortState']))
-	    #PortPhyState
-	    #2=polling
-	    #3=disabled
-	    #PortState           
-	    if int(port['PortPhyState']) == 3: #physical state is disabled
-                issues['disabled'].append({ 
-		   'port': port
+	    if 'PortPhyState' in port:
+		vlog(5, 'down port physstate:%s state:%s' % (port['PortPhyState'],port['PortState']))
+		#PortPhyState
+		#2=polling
+		#3=disabled
+		#PortState           
+		if int(port['PortPhyState']) == 3: #physical state is disabled
+		    issues['disabled'].append({ 
+		       'port': port
 		   })        
+	    else:
+		vlog(4, 'down port missing physstate %s' % (port))
 
 def parse_ibdiagnet ( ports, issues, contents ):
     """ Parse the output of ibdiagnet """
+
+    vlog(4, 'parse_ibdiagnet()')
 
     ibdiag_line_regex = re.compile(r"""
 	    \s*-[^IW]-\s+	    #find all none Info and Warns
@@ -419,6 +430,7 @@ def parse_ibdiagnet_csv ( ports, path_to_csv ):
     """ Parse the output of ibdiagnet ibdiagnet2.db_csv
 	Limited to pulling the cable serials and state out currently
     """
+    vlog(4, 'parse_ibdiagnet_csv ( ports, {} )'.format(path_to_csv ))
     csv_mode=None
     csv_headers=None
 
@@ -442,11 +454,22 @@ def parse_ibdiagnet_csv ( ports, path_to_csv ):
 		    else: #data
 			rowdict = dict(zip(csv_headers, row))
 
-			if csv_mode in [ 'START_CABLE_INFO', 'START_PORTS']:
-			    resolve_update_port(ports, rowdict.update({
-				    'guid': rowdict['PortGuid'],
-				    'port': rowdict['PortNum']
-				}))
+ 			if csv_mode == 'START_CABLE_INFO':
+			   rowdict['guid'] = rowdict['PortGuid']
+			   rowdict['port'] = rowdict['PortNum']
+			   resolve_update_port(ports,rowdict)
+			elif csv_mode == 'START_PORTS':
+                           rowdict['guid'] = rowdict['NodeGuid']
+			   rowdict['port'] = rowdict['PortNum']
+			   resolve_update_port(ports,rowdict)
+ 			elif csv_mode == 'START_LINKS':
+                           rowdict['guid'] = rowdict['NodeGuid1']
+			   rowdict['port'] = rowdict['PortNum1']
+			   resolve_update_port(ports,rowdict)
+
+                           rowdict['guid'] = rowdict['NodeGuid2']
+			   rowdict['port'] = rowdict['PortNum2']
+			   resolve_update_port(ports,rowdict) 
                           
 def find_cable_by_switch_leaf_port ( ports, name, leaf, port ):
     """ Checks all of the ports for any that are not at full width or speed """
@@ -460,17 +483,18 @@ def find_cable_by_switch_leaf_port ( ports, name, leaf, port ):
 def resolve_port(ports, port):
     """ Resolves out port from ports list """
     if not port:
+	vlog(4, 'unable to resolve none port')
 	return None
 
-    #guid and port known
     if port['guid'] and port['port']:
 	for pport in ports:
-	    if port['guid'] == pport['guid'] and pport['port'] == pport['port']:
+	    #if port['guid'] == pport['guid'] and port['port'] == pport['port']:
+	    if int(port['guid'], 16) == int(pport['guid'], 16) and port['port'] == pport['port']:
 		return pport
 
-    if port['name'] and port['port']:
+    if 'name' in port and port['name'] and port['port']:
  	for pport in ports:
-	    if port['name'] == pport['name'] and pport['port'] == pport['port']:
+	    if port['name'] == pport['name'] and port['port'] == pport['port']:
 		return pport
 
     vlog(4, 'unable to resolve port: {}'.format(port))
@@ -478,10 +502,17 @@ def resolve_port(ports, port):
  
 def resolve_update_port(ports, port):
     """ Resolves out port from ports list and update port dictionary with searched port values """
-    pport = resolve_port(port)
+    if not port:
+	vlog(4, 'unable to resolve and update none port')
+	traceback.print_stack()
+	return None
+
+    pport = resolve_port(ports, port)
 
     if pport:
 	pport.update(port);
+    else:
+	vlog(4, 'unable to resolve port and update %s' % port)
 
     return pport
  
