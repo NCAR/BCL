@@ -507,6 +507,10 @@ def resolve_update_port(ports, port):
 	traceback.print_stack()
 	return None
 
+    if int(port['port']) == 0:
+	vlog(4, 'ignoring loopback port {}/P{}'.format(port['guid'],port['port']))
+	return None
+
     pport = resolve_port(ports, port)
 
     if pport:
