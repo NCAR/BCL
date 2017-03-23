@@ -14,6 +14,7 @@ import sgi_cluster
 import cluster_info
 import file_locking
 import ib_diagnostics
+import pprint
 
 def initialize_state():
     """ Initialize DATABASE state variable 
@@ -418,7 +419,7 @@ def run_parse(dump_dir):
 #ibdiagnet2.cables  ibdiagnet2.debug   ibdiagnet2.log   ibdiagnet2.mcfdbs  ibdiagnet2.nodes_info  ibdiagnet2.pm    ibdiag_stdout.txt  ibnetdiscover.log        timestamp.txt
 
     ports = []
-    issues = {'unknown': [], 'counters': [] }
+    issues = {'unknown': [], 'label': [], 'speed': [], 'disabled': [], 'width': [], 'counters': [] }
 
     with open('%s/%s' % (dump_dir,'ibnetdiscover.log') , 'r') as fds:
         ib_diagnostics.parse_ibnetdiscover_cables(ports, fds.read()) 
@@ -426,7 +427,6 @@ def run_parse(dump_dir):
     with open('%s/%s' % (dump_dir,'ibdiagnet2.log') , 'r') as fds:
 	ib_diagnostics.parse_ibdiagnet(ports, issues, fds.read()) 
 
-    vlog(1, str(issues))
 
 #PortPhyState
 #2=polling
@@ -438,6 +438,13 @@ def run_parse(dump_dir):
 
     ibsp = cluster_info.get_ib_speed()
     ib_diagnostics.find_underperforming_cables ( ports, issues, ibsp['link'], ibsp['width'])
+
+
+    vlog(1, str(issues))
+
+    #pp = pprint.PrettyPrinter(indent=4)
+    #pp.pprint(issues)
+
 
     #initialize_state()
     #STATE['ports'] = ports

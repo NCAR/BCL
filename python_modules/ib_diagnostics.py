@@ -94,6 +94,34 @@ def parse_port ( label ):
 	if match.group('port2'):
 	    port = match.group('port2')
     else:
+	#regex matches following: (new mlnx format if no label is known)
+	#S7cfe900300bdf570/N7cfe900300bdf570/P28
+	ib_portname_type3_regex = re.compile(
+		    r"""
+		    ^\s*
+		    (?P<name>\w+)			#name
+		    (?:
+			(?:\s+
+			[hcaHCA]+(?:-|)(?P<hca>\d+)	#hca id
+			)
+			|
+		    )
+		    (?:\s+
+			[lLiIdD]+			
+			(?P<leaf>\d+)			#leaf (called lid in error)
+			|
+		    )	
+		    (?:\s+U\d+|)			#/U useless
+		    (?:
+			(?:\s+[pP](?P<port>\d+))	#port number
+			|
+			)
+		    \s*$
+		    """,
+		    re.VERBOSE
+		    ) 
+	match = ib_portname_type3_regex.match(label) 
+
 	#regex matches following: (these are usually from human entry)
 	#ys70ib1 L05 P12
 	#ys22ib1 P13 
@@ -284,19 +312,29 @@ def find_underperforming_cables ( ports, issues, speed, width = "4x"):
 
     for port in ports:
 	if port['name'] == "localhost": #complain about localhost named ports but no need to complain
-	    msg('Localhost labeled port: %s <-> %s' % (port_pretty(port), 'N/A' if not port['connection'] else port_pretty(port['connection'])))
+	   vlog(5,'Localhost labeled port: %s <-> %s' % (port_pretty(port), 'N/A' if not port['connection'] else port_pretty(port['connection'])))
+	   issues['label'].append({ 
+	       'port': port,
+	       'label': port['name']
+	       })         
 
 	if port['connection']: #ignore unconnected ports
-	    True
-	    #if port['speed'] != speed:
-	    #    msg_port_pretty_long(port, 'Underperforming Port')
-	    #if port['width'] != width:
-	    #    msg_port_pretty_long(port, 'Underperforming Port')
+	    if port['speed'] != speed:
+	       issues['speed'].append({ 
+		   'port': port,
+		   'speed': port['speed']
+		   })        
+	    if port['width'] != width:
+ 	       issues['width'].append({ 
+		   'port': port,
+		   'width': port['width']
+		   })        
 	else: #check if unconnected ports are disabled
 	    vlog(5, 'down port physstate:%s state:%s' % (port['PortPhyState'],port['PortState']))
 	    if int(port['PortPhyState']) == 3: #physical state is disabled
-		vlog(4, 'disabled %s' % (port))
-		msg_port_pretty_long(port, 'Disabled Port')
+                issues['disabled'].append({ 
+		   'port': port
+		   })        
 
 def parse_ibdiagnet ( ports, issues, contents ):
     """ Parse the output of ibdiagnet """
