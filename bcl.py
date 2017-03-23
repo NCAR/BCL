@@ -428,19 +428,15 @@ def run_parse(dump_dir):
 	ib_diagnostics.parse_ibdiagnet(ports, issues, fds.read()) 
 
 
-#PortPhyState
-#2=polling
-#3=disabled
-#PortState
+
 
     ib_diagnostics.parse_ibdiagnet_csv(ports, '%s/ibdiagnet2.db_csv' % (dump_dir))
-
 
     ibsp = cluster_info.get_ib_speed()
     ib_diagnostics.find_underperforming_cables ( ports, issues, ibsp['link'], ibsp['width'])
 
 
-    vlog(1, str(issues))
+    #vlog(1, str(issues))
 
     #pp = pprint.PrettyPrinter(indent=4)
     #pp.pprint(issues)

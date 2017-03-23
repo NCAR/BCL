@@ -37,6 +37,7 @@ def parse_port ( label ):
     leaf  = None
     spine = None #only used for internal orca connections
     port  = None   
+    guid  = None   
 
     #regex matches following:
     #'ys4618 HCA-1'(4594/1)
@@ -99,67 +100,62 @@ def parse_port ( label ):
 	ib_portname_type3_regex = re.compile(
 		    r"""
 		    ^\s*
-		    (?P<name>\w+)			#name
-		    (?:
-			(?:\s+
-			[hcaHCA]+(?:-|)(?P<hca>\d+)	#hca id
-			)
-			|
-		    )
-		    (?:\s+
-			[lLiIdD]+			
-			(?P<leaf>\d+)			#leaf (called lid in error)
-			|
-		    )	
-		    (?:\s+U\d+|)			#/U useless
-		    (?:
-			(?:\s+[pP](?P<port>\d+))	#port number
-			|
-			)
-		    \s*$
+		    S(?P<guid>[a-f0-9]*)  
+		    \/
+                    N[a-f0-9]*
+		    (|
+			/P(?P<port>[0-9]*?)
+		    )$
 		    """,
 		    re.VERBOSE
 		    ) 
 	match = ib_portname_type3_regex.match(label) 
-
-	#regex matches following: (these are usually from human entry)
-	#ys70ib1 L05 P12
-	#ys22ib1 P13 
-	#ys2324 HCA-1
-	#geyser01 HCA-1 P3
-	ib_portname_type2_regex = re.compile(
-		    r"""
-		    ^\s*
-		    (?P<name>\w+)			#name
-		    (?:
-			(?:\s+
-			[hcaHCA]+(?:-|)(?P<hca>\d+)	#hca id
-			)
-			|
-		    )
-		    (?:\s+
-			[lLiIdD]+			
-			(?P<leaf>\d+)			#leaf (called lid in error)
-			|
-		    )	
-		    (?:\s+U\d+|)			#/U useless
-		    (?:
-			(?:\s+[pP](?P<port>\d+))	#port number
-			|
-			)
-		    \s*$
-		    """,
-		    re.VERBOSE
-		    ) 
-	match = ib_portname_type2_regex.match(label)
 	if match:
-	    vmsg(5, 'matched: %s' % match.group())
-	    name = match.group('name')
-	    hca = match.group('hca')
-	    leaf = match.group('leaf')
-	    port = match.group('port')
+	    guid = '0x{}'.format(match.group('guid'))
+	    if match.group('port'):
+	        port = int(match.group('port'))
+
+	    vlog(5, 'matched: %s GUID=%s Port=%s' % (match.group(), guid, port))
 	else:
-	    name = label
+	    #regex matches following: (these are usually from human entry)
+	    #ys70ib1 L05 P12
+	    #ys22ib1 P13 
+	    #ys2324 HCA-1
+	    #geyser01 HCA-1 P3
+	    ib_portname_type2_regex = re.compile(
+			r"""
+			^\s*
+			(?P<name>\w+)			#name
+			(?:
+			    (?:\s+
+			    [hcaHCA]+(?:-|)(?P<hca>\d+)	#hca id
+			    )
+			    |
+			)
+			(?:\s+
+			    [lLiIdD]+			
+			    (?P<leaf>\d+)			#leaf (called lid in error)
+			    |
+			)	
+			(?:\s+U\d+|)			#/U useless
+			(?:
+			    (?:\s+[pP](?P<port>\d+))	#port number
+			    |
+			    )
+			\s*$
+			""",
+			re.VERBOSE
+			) 
+	    match = ib_portname_type2_regex.match(label)
+	    if match:
+		vlog(5, 'matched: %s' % match.group())
+		name = match.group('name')
+		hca = match.group('hca')
+		leaf = match.group('leaf')
+		port = match.group('port')
+	    else:
+		vlog(5, 'unable to match: %s' % (label))
+		name = label
 
     return {
 		'name'	: name,
@@ -331,6 +327,10 @@ def find_underperforming_cables ( ports, issues, speed, width = "4x"):
 		   })        
 	else: #check if unconnected ports are disabled
 	    vlog(5, 'down port physstate:%s state:%s' % (port['PortPhyState'],port['PortState']))
+	    #PortPhyState
+	    #2=polling
+	    #3=disabled
+	    #PortState           
 	    if int(port['PortPhyState']) == 3: #physical state is disabled
                 issues['disabled'].append({ 
 		   'port': port
@@ -357,6 +357,15 @@ def parse_ibdiagnet ( ports, issues, contents ):
             increased\ during\ the\ run\ \(difference\ value=
             (?P<value>[0-9]*),
 	""", re.VERBOSE)  
+    #Link: S7cfe900300a51030/N7cfe900300a51030/P28<-->ime2/U1/P1 - Unexpected actual link speed 14
+    ibdiag_line_regex_link = re.compile(r"""
+	    ^\s*Link:\s*
+	    (?P<port>\S*?)
+	    (|<-->
+		(?P<port2>\S*)
+	    )
+	    \s*-\s*(?P<what>\S*)
+	""", re.VERBOSE)  
     for match in re.finditer(r"""
 	(?![#-]+[\n\r])[\r\n]*		#all of the stanzas start with --- or ###
 	(?P<label>(?![#-]+).*)[\r\n]+   #first real line is the label
@@ -380,15 +389,32 @@ def parse_ibdiagnet ( ports, issues, contents ):
 		   vlog(4,'IBDiagnet2: %s: %s' % (match.group('label'), lmatch.group('msg')))
 
 		   cmatch = ibdiag_line_regex_port.match(lmatch.group('msg'))
+		   lnmatch = ibdiag_line_regex_link.match(lmatch.group('msg'))
 		   if cmatch:
+		       dport = parse_port(cmatch.group('port'))
 		       issues['counters'].append({ 
-			   'port': cmatch.group('port'),
+			   'port': dport,
 			   'counter': cmatch.group('counter'),
 			   'value': cmatch.group('value')
 			   })
+		   elif lnmatch:
+ 		       dport = parse_port(lnmatch.group('port'))
+		       if lnmatch.group('port2'):
+			   dport2 = parse_port(lnmatch.group('port2'))
+		       else:
+			   dport2 = None 
+		       issues['counters'].append({ 
+			   'port': dport,
+			   'port2': dport,
+			   'why': lnmatch.group('what')
+			   })
 		   else:
-		       if lmatch.group('msg') != 'Ports counters value Check finished with errors' \
-			   and lmatch.group('msg') != 'Ports counters Difference Check (during run) finished with errors':
+		       if lmatch.group('msg') in [
+			       'Ports counters value Check finished with errors',
+				'Ports counters Difference Check (during run) finished with errors',
+				'Links Speed Check finished with errors'
+			    ]:
+			       vlog(4,'IBDiagnet2 unknown: %s: %s' % (match.group('label'), lmatch.group('msg')))
 			       issues['unknown'].append('%s: %s' % (match.group('label'), lmatch.group('msg')))
 
 def parse_ibdiagnet_csv ( ports, path_to_csv ):
