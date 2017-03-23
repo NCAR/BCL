@@ -95,7 +95,8 @@ def parse_port ( label ):
 	if match.group('port2'):
 	    port = match.group('port2')
     else:
-	#regex matches following: (new mlnx format if no label is known)
+	#regex matches following: (mlnx default format if unlabeled)
+	#Sguid/Nguid/Pport
 	#S7cfe900300bdf570/N7cfe900300bdf570/P28
 	ib_portname_type3_regex = re.compile(
 		    r"""
