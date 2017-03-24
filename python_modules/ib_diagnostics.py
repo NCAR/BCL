@@ -497,7 +497,7 @@ def parse_ibdiagnet ( ports, issues, contents ):
  		       dport2 = None
 		       if lnmatch.group('port2'):
 			   dport2 = parse_resolve_port(ports, lnmatch.group('port2'))
-		       issues['counters'].append({ 
+		       issues['link'].append({ 
 			   'port1': parse_resolve_port(ports, lnmatch.group('port')),
 			   'port2': dport2,
 			   'why': lnmatch.group('what')

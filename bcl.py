@@ -422,7 +422,7 @@ def run_parse(dump_dir):
     global EV, STATE
 
     ports = []
-    issues = {'missing': [], 'unexpected': [], 'unknown': [], 'label': [], 'speed': [], 'disabled': [], 'width': [], 'counters': [] }
+    issues = {'link': [], 'missing': [], 'unexpected': [], 'unknown': [], 'label': [], 'speed': [], 'disabled': [], 'width': [], 'counters': [] }
 
     with open('%s/%s' % (dump_dir,'ibnetdiscover.log') , 'r') as fds:
         ib_diagnostics.parse_ibnetdiscover_cables(ports, fds.read()) 
@@ -461,11 +461,11 @@ def run_parse(dump_dir):
 	add_cables(issue['port'], None, 'Invalid Port Label: %s ' % issue['label'])        
 
     for issue in issues['counters']:
-	if 'port' in issue:
-	    add_cables(issue['port'], None, 'Increase in Port Counter: %s=%s ' % (issue['counter'], issue['value']))        
-	elif 'port1' in issue:
-	    add_cables(issue['port1'], issue['port2'], 'Increase in Port Counter: %s ' % (issue['why']))        
+	add_cables(issue['port'], None, 'Increase in Port Counter: %s=%s ' % (issue['counter'], issue['value']))        
 
+    for issue in issues['link']:
+	add_cables(issue['port1'], issue['port2'], 'Link Issue: %s ' % (issue['why']))        
+ 
     for issue in issues['speed']:
 	add_cables(issue['port'], None, 'Invalid Port Speed: %s ' % issue['speed'])        
 
