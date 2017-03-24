@@ -461,7 +461,7 @@ def parse_ibdiagnet ( ports, issues, contents ):
 	    (|<-->
 		(?P<port2>\S*)
 	    )
-	    \s*-\s*(?P<what>\S*)
+	    \s*-\s*(?P<what>.*)
 	""", re.VERBOSE)  
     for match in re.finditer(r"""
 	(?![#-]+[\n\r])[\r\n]*		#all of the stanzas start with --- or ###

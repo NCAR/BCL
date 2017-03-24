@@ -437,7 +437,8 @@ def run_parse(dump_dir):
 	ib_diagnostics.parse_sgi_ibcv2(ports, issues, fds.read()) 
 
     ibsp = cluster_info.get_ib_speed()
-    ib_diagnostics.find_underperforming_cables ( ports, issues, ibsp['link'], ibsp['width'])
+    print ibsp
+    ib_diagnostics.find_underperforming_cables ( ports, issues, ibsp['speed'], ibsp['width'])
 
     #vlog(1, str(issues))
 
