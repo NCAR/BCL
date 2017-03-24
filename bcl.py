@@ -40,7 +40,7 @@ def initialize_state():
 	vlog(2, 'Initializing new state database')
 
 	STATE = {
-		'cables': {}
+		'cables': []
 	}
 
 def release_state():
@@ -69,6 +69,28 @@ def save_state():
     with open(BAD_CABLE_DB, 'w') as fds:
 	json.dump(STATE, fds, sort_keys=True, indent=4, separators=(',', ': '))
 
+def find_cable(port1, port2, create = True):
+    """ Find cable in state[ports] """
+
+    for cable in STATE['cables']:
+	if ( #does port1 match?
+		(port1 and cable['port1']['guid'] == port1['guid'] and cable['port1']['port'] == port1['port'])
+		or
+		(port2 and cable['port1']['guid'] == port2['guid'] and cable['port1']['port'] == port2['port'])
+	    ):
+	    return cable;
+
+	if not cable['port2'] == None and ( #does port2 match?
+		(port1 and cable['port2']['guid'] == port1['guid'] and cable['port2']['port'] == port1['port'])
+		or
+		(port2 and cable['port2']['guid'] == port2['guid'] and cable['port2']['port'] == port2['port'])
+	    ):
+	    return cable;
+             	    
+    vlog(5, 'unable to find cable %s <--> %s' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2)))
+    return None
+
+
 def add_cables(port1, port2, comment, new_state = 'suspect', skip_ev = False):
     """ Add node to bad node list 
     list: list of nodes to add to bnl
@@ -77,9 +99,39 @@ def add_cables(port1, port2, comment, new_state = 'suspect', skip_ev = False):
     """
     global EV, STATE
 
+    #handle single ports
+    if not port1 and port2:
+	port1 = port2
+	port2 = None
+
     vlog(3, 'add_cables(%s, %s, %s, %s, %s)' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2), comment, new_state, skip_ev))
 
+    cissue = find_cable(port1, port2)
+    if cissue == None:
+	vlog(3, 'new issue %s <--> %s' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2)))
+	cissue = {
+	    'port1': {
+		'guid': port1['guid'],
+		'port': port1['port']
+	    },
+	    'port2':	None,
+	}
 
+	#add other port if not included and known
+	if not port2 and port1['connection']:
+	    port2 = port1['connection']
+	    vlog(3, 'resolving cable other port %s <--> %s' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2)))
+
+	if port2:
+	    cissue['port2'] = {}
+	    cissue['port2']['guid'] = port1['guid']
+	    cissue['port2']['port'] = port1['port']
+
+	STATE['cables'].append(cissue)
+
+
+    cissue['comment'] = comment
+    cissue['state'] = new_state
 #
 #    pbs.set_offline_nodes(nodes, comment)
 #
@@ -437,17 +489,9 @@ def run_parse(dump_dir):
 	ib_diagnostics.parse_sgi_ibcv2(ports, issues, fds.read()) 
 
     ibsp = cluster_info.get_ib_speed()
-    print ibsp
     ib_diagnostics.find_underperforming_cables ( ports, issues, ibsp['speed'], ibsp['width'])
 
-    #vlog(1, str(issues))
-
-    pp = pprint.PrettyPrinter(indent=4)
-    pp.pprint(issues['unknown'])
-
-
     initialize_state()
-    #STATE['ports'] = ports
 
     for issue in issues['missing']:
 	add_cables(issue['port1'], issue['port2'], 'Missing Cable')
@@ -476,9 +520,11 @@ def run_parse(dump_dir):
     for issue in issues['disabled']:
 	add_cables(issue['port'], None, 'Port Physical Layer Disabled')        
                                                                             
+ 
+    pp = pprint.PrettyPrinter(indent=4)
+    pp.pprint(STATE)
+ 
     release_state()
- 
- 
 
 def dump_help():
     die_now("""NCAR Bad Cable List Multitool
