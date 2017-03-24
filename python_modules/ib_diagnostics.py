@@ -339,12 +339,13 @@ def find_underperforming_cables ( ports, issues, speed, width = "4x"):
 		   })        
 	else: #check if unconnected ports are disabled
 	    if 'PortPhyState' in port:
-		vlog(5, 'down port physstate:%s state:%s' % (port['PortPhyState'],port['PortState']))
+		vlog(5, 'down port guid=%s port=%s physstate:%s state:%s' % (port['guid'], port['port'], port['PortPhyState'],port['PortState']))
 		#PortPhyState
 		#2=polling
 		#3=disabled
 		#PortState           
 		if int(port['PortPhyState']) == 3: #physical state is disabled
+		    vlog(4, 'disabled port found guid=%s port=%s physstate:%s state:%s' % (port['guid'], port['port'], port['PortPhyState'],port['PortState']))
 		    issues['disabled'].append({ 
 		       'port': port
 		   })        
@@ -431,50 +432,49 @@ def parse_ibdiagnet ( ports, issues, contents ):
 			       vlog(4,'IBDiagnet2 unknown: %s: %s' % (match.group('label'), lmatch.group('msg')))
 			       issues['unknown'].append('%s: %s' % (match.group('label'), lmatch.group('msg')))
 
-def parse_ibdiagnet_csv ( ports, path_to_csv ):
+def parse_ibdiagnet_csv ( ports, fcsv ):
     """ Parse the output of ibdiagnet ibdiagnet2.db_csv
 	Limited to pulling the cable serials and state out currently
     """
-    vlog(4, 'parse_ibdiagnet_csv ( ports, {} )'.format(path_to_csv ))
+    vlog(4, 'parse_ibdiagnet_csv()')
     csv_mode=None
     csv_headers=None
 
     #START_CABLE_INFO
     #END_CABLE_INFO
 
-    with open(path_to_csv) as fcsv:
-	csv_reader = csv.reader(fcsv)
-	for row in csv_reader:
-	    if len(row) == 1 and row[0] != "" :
-		if row[0].startswith('START_'):
-		    csv_mode = row[0];
-		    csv_headers = None
-		if row[0].startswith('END_'):
-		    csv_mode = None
-		    csv_headers = None
-	    else:
-		if csv_mode: #in a data block
-		    if csv_headers == None:
-			csv_headers = row;
-		    else: #data
-			rowdict = dict(zip(csv_headers, row))
+    csv_reader = csv.reader(fcsv)
+    for row in csv_reader:
+	if len(row) == 1 and row[0] != "" :
+	    if row[0].startswith('START_'):
+		csv_mode = row[0];
+		csv_headers = None
+	    if row[0].startswith('END_'):
+		csv_mode = None
+		csv_headers = None
+	else:
+	    if csv_mode: #in a data block
+		if csv_headers == None:
+		    csv_headers = row;
+		else: #data
+		    rowdict = dict(zip(csv_headers, row))
 
- 			if csv_mode == 'START_CABLE_INFO':
-			   rowdict['guid'] = rowdict['PortGuid']
-			   rowdict['port'] = rowdict['PortNum']
-			   resolve_update_port(ports,rowdict)
-			elif csv_mode == 'START_PORTS':
-                           rowdict['guid'] = rowdict['NodeGuid']
-			   rowdict['port'] = rowdict['PortNum']
-			   resolve_update_port(ports,rowdict)
- 			elif csv_mode == 'START_LINKS':
-                           rowdict['guid'] = rowdict['NodeGuid1']
-			   rowdict['port'] = rowdict['PortNum1']
-			   resolve_update_port(ports,rowdict)
+		    if csv_mode == 'START_CABLE_INFO':
+		       rowdict['guid'] = rowdict['PortGuid']
+		       rowdict['port'] = rowdict['PortNum']
+		       resolve_update_port(ports,rowdict)
+		    elif csv_mode == 'START_PORTS':
+		       rowdict['guid'] = rowdict['NodeGuid']
+		       rowdict['port'] = rowdict['PortNum']
+		       resolve_update_port(ports,rowdict)
+		    #elif csv_mode == 'START_LINKS':
+		    #   rowdict['guid'] = rowdict['NodeGuid1']
+		    #   rowdict['port'] = rowdict['PortNum1']
+		    #   resolve_update_port(ports,rowdict)
 
-                           rowdict['guid'] = rowdict['NodeGuid2']
-			   rowdict['port'] = rowdict['PortNum2']
-			   resolve_update_port(ports,rowdict) 
+		    #   rowdict['guid'] = rowdict['NodeGuid2']
+		    #   rowdict['port'] = rowdict['PortNum2']
+		    #   resolve_update_port(ports,rowdict) 
                           
 def find_cable_by_switch_leaf_port ( ports, name, leaf, port ):
     """ Checks all of the ports for any that are not at full width or speed """
@@ -498,7 +498,7 @@ def resolve_port(ports, port):
 		return pport
 	vlog(5, 'unable to resolve port: GUID={} PortNum={}'.format(port['guid'], port['port']))
 
-    if 'name' in port and port['name'] and port['port']:
+    if 'name' in port and port['name'] and port['port'] and port['name'] != "localhost":
  	for pport in ports:
 	    if port['name'] == pport['name'] and int(port['port']) == int(pport['port']):
 		return pport

@@ -424,7 +424,8 @@ def run_parse(dump_dir):
     with open('%s/%s' % (dump_dir,'ibnetdiscover.log') , 'r') as fds:
         ib_diagnostics.parse_ibnetdiscover_cables(ports, fds.read()) 
 
-    ib_diagnostics.parse_ibdiagnet_csv(ports, '%s/ibdiagnet2.db_csv' % (dump_dir))
+    with open('%s/ibdiagnet2.db_csv' % (dump_dir), 'r') as fds:
+	ib_diagnostics.parse_ibdiagnet_csv(ports, fds)
 
     with open('%s/%s' % (dump_dir,'ibdiagnet2.log') , 'r') as fds:
 	ib_diagnostics.parse_ibdiagnet(ports, issues, fds.read()) 
