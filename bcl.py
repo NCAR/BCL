@@ -430,9 +430,11 @@ def run_parse(dump_dir):
     with open('%s/%s' % (dump_dir,'ibdiagnet2.log') , 'r') as fds:
 	ib_diagnostics.parse_ibdiagnet(ports, issues, fds.read()) 
 
+    with open('%s/%s' % (dump_dir,'sgi-ibcv2.log') , 'r') as fds:
+	ib_diagnostics.parse_sgi_ibcv2(ports, issues, fds.read()) 
 
-    ibsp = cluster_info.get_ib_speed()
-    ib_diagnostics.find_underperforming_cables ( ports, issues, ibsp['link'], ibsp['width'])
+#    ibsp = cluster_info.get_ib_speed()
+#    ib_diagnostics.find_underperforming_cables ( ports, issues, ibsp['link'], ibsp['width'])
 
 
     #vlog(1, str(issues))

@@ -352,6 +352,49 @@ def find_underperforming_cables ( ports, issues, speed, width = "4x"):
 	    else:
 		vlog(4, 'down port missing physstate %s' % (port))
 
+def parse_sgi_ibcv2 ( ports, issues, contents ):
+    """ Parse the useful output of SGI's ibcv2 tool """
+
+    vlog(4, 'parse_sgi_ibcv2()')
+
+    #Errors to parse out:
+    #print "NOT FOUND: $comment\n";
+    #print "MISCABLE:\n";
+    #printf "\tFOUND:    %s <---> %s\n", $phy_sact, $phy_dact;
+    #printf "\tEXPECTED: $phy_sexp <---> $phy_dexp\n";
+
+##    for match in re.finditer(r"""
+##	^\s*(
+##	    ERROR:\s*(?P<error>.*)
+##	    |
+##	    NOT\ FOUND:\s*(?P<missing>.*)
+##	    |
+##	    FOUND:\s*(?P<foundcable1>\S*)\s*<-*>\s*(?P<foundcable2>\S*)\S*
+##	    )\s*$ 
+##	""", contents, re.VERBOSE):
+ 
+    for match in re.finditer(r"""
+	\s*
+	(
+	    ERROR:\s*(?P<error>.*)
+	    |
+	    NOT\ FOUND:\s*(?P<missing1>\S*)\s*(?P<missing2>\S*)
+	    |
+	    FOUND:\s*(?P<found1>\S*)\s*<-*>\s*(?P<found2>\S*)
+	)
+	\s*
+	""", contents, re.VERBOSE):
+
+	vlog(5, match.groups())
+	if match.group('error'):
+	    vlog(5, 'unknown error: %s' % match.group('error'))
+	    issues['unknown'].append(match.group('error'))
+	elif match.group('missing1'): 
+	    vlog(5, 'missing cable: %s <--> %s' % (match.group('missing1'), match.group('missing2')))
+	elif match.group('found1'): 
+	    vlog(5, 'unexpected cable: %s <--> %s' % (match.group('found1'), match.group('found2')))
+ 
+
 def parse_ibdiagnet ( ports, issues, contents ):
     """ Parse the output of ibdiagnet """
 
