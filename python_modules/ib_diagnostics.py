@@ -9,6 +9,7 @@ import os
 import csv
 import cluster_info
 import traceback
+import math
 
 #def exec_opensm_to_string ( cmd ):
 #    """ Runs cmd on openSM host and places Return Value, STDOUT, STDERR into returned list  """
@@ -355,6 +356,41 @@ def find_underperforming_cables ( ports, issues, speed, width = "4x"):
 def parse_sgi_ibcv2 ( ports, issues, contents ):
     """ Parse the useful output of SGI's ibcv2 tool """
 
+    def parse(label):
+	""" Parse the ibcv2 specific label names """
+	vlog(5, 'parse_sgi_ibcv2::parse(%s)' % (label))
+
+	#r1i0s0c0.16
+ 	port_regex = re.compile(
+	    r"""
+	    r(?P<rack>[0-9]*)  #E-cell Rack - not E-Cell number
+	    i(?P<iru>[0-9]*)
+	    s(?P<switch>[0-9]*)
+	    c(?P<swchip>[0-9]*)
+	    \.
+	    (?P<port>[0-9]*)
+	    """,
+	    re.VERBOSE
+	    )
+
+	match = port_regex.match(label) 
+	if match:        
+	    #Format on the switch labels:
+	    #'r1i3s0 SW0 SwitchX -  Mellanox Technologies'
+
+	    return resolve_port(ports, {
+		'name': 'r{}i{}s{} SW{} SwitchX -  Mellanox Technologies'.format(
+		    int(math.ceil(float(match.group('rack')) / 2.0)), #convert rack to ecell
+		    match.group('iru'),
+		    match.group('switch'),
+		    match.group('swchip')
+		),
+		'port': int(match.group('port'))
+	    })
+	else:
+	    vlog(2, 'unable to parse ibcv2 port %s' % label)
+	    return None
+
     vlog(4, 'parse_sgi_ibcv2()')
 
     #Errors to parse out:
@@ -362,17 +398,6 @@ def parse_sgi_ibcv2 ( ports, issues, contents ):
     #print "MISCABLE:\n";
     #printf "\tFOUND:    %s <---> %s\n", $phy_sact, $phy_dact;
     #printf "\tEXPECTED: $phy_sexp <---> $phy_dexp\n";
-
-##    for match in re.finditer(r"""
-##	^\s*(
-##	    ERROR:\s*(?P<error>.*)
-##	    |
-##	    NOT\ FOUND:\s*(?P<missing>.*)
-##	    |
-##	    FOUND:\s*(?P<foundcable1>\S*)\s*<-*>\s*(?P<foundcable2>\S*)\S*
-##	    )\s*$ 
-##	""", contents, re.VERBOSE):
- 
     for match in re.finditer(r"""
 	\s*
 	(
@@ -391,8 +416,16 @@ def parse_sgi_ibcv2 ( ports, issues, contents ):
 	    issues['unknown'].append(match.group('error'))
 	elif match.group('missing1'): 
 	    vlog(5, 'missing cable: %s <--> %s' % (match.group('missing1'), match.group('missing2')))
+	    issues['missing'].append({
+		'port1': parse(match.group('missing1')),
+		'port2': parse(match.group('missing2'))
+		})
 	elif match.group('found1'): 
 	    vlog(5, 'unexpected cable: %s <--> %s' % (match.group('found1'), match.group('found2')))
+ 	    issues['unexpected'].append({
+		'port1': parse(match.group('found1')),
+		'port2': parse(match.group('found2'))
+		})
  
 
 def parse_ibdiagnet ( ports, issues, contents ):
@@ -534,7 +567,7 @@ def resolve_port(ports, port):
 	vlog(4, 'unable to resolve none port')
 	return None
 
-    if port['guid'] and port['port']:
+    if 'guid' in port and port['guid'] and port['port']:
 	for pport in ports:
 	    #if port['guid'] == pport['guid'] and port['port'] == pport['port']:
 	    if int(port['guid'], 16) == int(pport['guid'], 16) and int(port['port']) == int(pport['port']):

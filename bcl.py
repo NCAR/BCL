@@ -419,7 +419,7 @@ def run_parse(dump_dir):
 #ibdiagnet2.cables  ibdiagnet2.debug   ibdiagnet2.log   ibdiagnet2.mcfdbs  ibdiagnet2.nodes_info  ibdiagnet2.pm    ibdiag_stdout.txt  ibnetdiscover.log        timestamp.txt
 
     ports = []
-    issues = {'unknown': [], 'label': [], 'speed': [], 'disabled': [], 'width': [], 'counters': [] }
+    issues = {'missing': [], 'unexpected': [], 'unknown': [], 'label': [], 'speed': [], 'disabled': [], 'width': [], 'counters': [] }
 
     with open('%s/%s' % (dump_dir,'ibnetdiscover.log') , 'r') as fds:
         ib_diagnostics.parse_ibnetdiscover_cables(ports, fds.read()) 
@@ -432,6 +432,9 @@ def run_parse(dump_dir):
 
     with open('%s/%s' % (dump_dir,'sgi-ibcv2.log') , 'r') as fds:
 	ib_diagnostics.parse_sgi_ibcv2(ports, issues, fds.read()) 
+
+
+    print issues['missing']
 
 #    ibsp = cluster_info.get_ib_speed()
 #    ib_diagnostics.find_underperforming_cables ( ports, issues, ibsp['link'], ibsp['width'])
