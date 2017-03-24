@@ -99,12 +99,17 @@ def parse_port ( label ):
 	#regex matches following: (mlnx default format if unlabeled)
 	#Sguid/Nguid/Pport
 	#S7cfe900300bdf570/N7cfe900300bdf570/P28
+	#S248a0703003f1932/U/P1
 	ib_portname_type3_regex = re.compile(
 		    r"""
 		    ^\s*
 		    S(?P<guid>[a-f0-9]*)  
-		    \/
-                    N[a-f0-9]*
+		    (
+			\/
+			N[a-f0-9]*
+			|
+			\/U
+		    )
 		    (|
 			/P(?P<port>[0-9]*?)
 		    )$
@@ -418,8 +423,8 @@ def parse_ibdiagnet ( ports, issues, contents ):
 			   'why': lnmatch.group('what')
 			   })
 		   else:
-		       if lmatch.group('msg') in [
-			       'Ports counters value Check finished with errors',
+		       if not str(lmatch.group('msg')) in [
+			        'Ports counters value Check finished with errors',
 				'Ports counters Difference Check (during run) finished with errors',
 				'Links Speed Check finished with errors'
 			    ]:
@@ -489,13 +494,16 @@ def resolve_port(ports, port):
     if port['guid'] and port['port']:
 	for pport in ports:
 	    #if port['guid'] == pport['guid'] and port['port'] == pport['port']:
-	    if int(port['guid'], 16) == int(pport['guid'], 16) and port['port'] == pport['port']:
+	    if int(port['guid'], 16) == int(pport['guid'], 16) and int(port['port']) == int(pport['port']):
 		return pport
+	vlog(5, 'unable to resolve port: GUID={} PortNum={}'.format(port['guid'], port['port']))
 
     if 'name' in port and port['name'] and port['port']:
  	for pport in ports:
-	    if port['name'] == pport['name'] and port['port'] == pport['port']:
+	    if port['name'] == pport['name'] and int(port['port']) == int(pport['port']):
 		return pport
+
+	vlog(5, 'unable to resolve port: Name={} PortNum={}'.format(port['name'], port['port']))
 
     vlog(4, 'unable to resolve port: {}'.format(port))
     return None
