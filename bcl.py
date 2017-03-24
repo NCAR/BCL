@@ -69,13 +69,17 @@ def save_state():
     with open(BAD_CABLE_DB, 'w') as fds:
 	json.dump(STATE, fds, sort_keys=True, indent=4, separators=(',', ': '))
 
-#def add_nodes(nodes, comment, new_state = 'suspect-pending', skip_ev = False):
-#    """ Add node to bad node list 
-#    list: list of nodes to add to bnl
-#    string:: comment as to why added
-#    new_state: give state if not already a bad node
-#    """
-#    global EV
+def add_cables(port1, port2, comment, new_state = 'suspect', skip_ev = False):
+    """ Add node to bad node list 
+    list: list of nodes to add to bnl
+    string:: comment as to why added
+    new_state: give state if not already a bad node
+    """
+    global EV, STATE
+
+    vlog(3, 'add_cables(%s, %s, %s, %s, %s)' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2), comment, new_state, skip_ev))
+
+
 #
 #    pbs.set_offline_nodes(nodes, comment)
 #
@@ -411,12 +415,11 @@ def save_state():
 #    if state == 'suspect-pending':
 #	STATE['nodes'][node]['state'] = 'suspect' 
 
+
+
 def run_parse(dump_dir):
     """ Run parse mode against a dump directory """
     global EV, STATE
-
-#ibdiagnet2.aguid   ibdiagnet2.db_csv  ibdiagnet2.fdbs  ibdiagnet2.lst     ibdiagnet2.net_dump    ibdiagnet2.pkey  ibdiagnet2.sm      ibnetdiscover_cache.log  report.txt
-#ibdiagnet2.cables  ibdiagnet2.debug   ibdiagnet2.log   ibdiagnet2.mcfdbs  ibdiagnet2.nodes_info  ibdiagnet2.pm    ibdiag_stdout.txt  ibnetdiscover.log        timestamp.txt
 
     ports = []
     issues = {'missing': [], 'unexpected': [], 'unknown': [], 'label': [], 'speed': [], 'disabled': [], 'width': [], 'counters': [] }
@@ -433,22 +436,46 @@ def run_parse(dump_dir):
     with open('%s/%s' % (dump_dir,'sgi-ibcv2.log') , 'r') as fds:
 	ib_diagnostics.parse_sgi_ibcv2(ports, issues, fds.read()) 
 
-
-    print issues['missing']
-
-#    ibsp = cluster_info.get_ib_speed()
-#    ib_diagnostics.find_underperforming_cables ( ports, issues, ibsp['link'], ibsp['width'])
-
+    ibsp = cluster_info.get_ib_speed()
+    ib_diagnostics.find_underperforming_cables ( ports, issues, ibsp['link'], ibsp['width'])
 
     #vlog(1, str(issues))
 
-    #pp = pprint.PrettyPrinter(indent=4)
-    #pp.pprint(issues)
+    pp = pprint.PrettyPrinter(indent=4)
+    pp.pprint(issues['unknown'])
 
 
-    #initialize_state()
+    initialize_state()
     #STATE['ports'] = ports
-    #release_state()
+
+    for issue in issues['missing']:
+	add_cables(issue['port1'], issue['port2'], 'Missing Cable')
+
+    for issue in issues['unexpected']:
+	add_cables(issue['port1'], issue['port2'], 'Unexpected Cable')
+  
+    for issue in issues['unknown']:
+	add_cables(None, None, issue)
+
+    for issue in issues['label']:
+	add_cables(issue['port'], None, 'Invalid Port Label: %s ' % issue['label'])        
+
+    for issue in issues['counters']:
+	if 'port' in issue:
+	    add_cables(issue['port'], None, 'Increase in Port Counter: %s=%s ' % (issue['counter'], issue['value']))        
+	elif 'port1' in issue:
+	    add_cables(issue['port1'], issue['port2'], 'Increase in Port Counter: %s ' % (issue['why']))        
+
+    for issue in issues['speed']:
+	add_cables(issue['port'], None, 'Invalid Port Speed: %s ' % issue['speed'])        
+
+    for issue in issues['width']:
+	add_cables(issue['port'], None, 'Invalid Port Width: %s ' % issue['width'])        
+ 
+    for issue in issues['disabled']:
+	add_cables(issue['port'], None, 'Port Physical Layer Disabled')        
+                                                                            
+    release_state()
  
  
 
@@ -501,6 +528,14 @@ def dump_help():
 	VERBOSE=[1-5]
 	    1: lowest
 	    5: highest
+
+
+Port1 Port2 STATE   EV   Comment
+None  None  Suspect 4343 Unknown
+    errors
+    errors
+
+
 	    
     """.format(argv[0]))
 

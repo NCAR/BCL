@@ -301,7 +301,10 @@ def port_pretty ( port ):
 	return '%s/L%s/P%s' % (port['name'], port['leaf'], port['port']) 
     if port['hca']: #hca on node
 	return '%s/HCA%s/P%s' % (port['name'], port['hca'], port['port'])
-    return '%s/P%s' % (port['name'], port['port']) #tor port
+
+    name = port['name']
+    name = re.sub(r'\s*SwitchX\s*-\s*Mellanox\ Technologies', '', name)
+    return '%s/P%s' % (name, port['port']) #tor port
 
 def find_underperforming_cables ( ports, issues, speed, width = "4x"):
     """ Checks all of the ports for any that are not at full width or speed or disabled """
@@ -495,7 +498,7 @@ def parse_ibdiagnet ( ports, issues, contents ):
 		       if lnmatch.group('port2'):
 			   dport2 = parse_resolve_port(ports, lnmatch.group('port2'))
 		       issues['counters'].append({ 
-			   'port': parse_resolve_port(ports, lnmatch.group('port')),
+			   'port1': parse_resolve_port(ports, lnmatch.group('port')),
 			   'port2': dport2,
 			   'why': lnmatch.group('what')
 			   })
