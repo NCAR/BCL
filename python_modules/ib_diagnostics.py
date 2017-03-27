@@ -506,7 +506,9 @@ def parse_ibdiagnet ( ports, issues, contents ):
 		       if not str(lmatch.group('msg')) in [
 			        'Ports counters value Check finished with errors',
 				'Ports counters Difference Check (during run) finished with errors',
-				'Links Speed Check finished with errors'
+				'Links Speed Check finished with errors',
+				'Links Check finished with errors',
+				'Fabric Discover finished with errors'
 			    ]:
 			       vlog(4,'IBDiagnet2 unknown: %s: %s' % (match.group('label'), lmatch.group('msg')))
 			       issues['unknown'].append('%s: %s' % (match.group('label'), lmatch.group('msg')))

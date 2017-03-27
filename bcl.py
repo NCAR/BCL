@@ -14,6 +14,7 @@ import cluster_info
 import file_locking
 import ib_diagnostics
 import pprint
+import time
 
 def initialize_state():
     """ Initialize DATABASE state variable 
@@ -39,7 +40,9 @@ def initialize_state():
 	vlog(2, 'Initializing new state database')
 
 	STATE = {
-		'cables': []
+		'cables': {}, #dict of index->cable of all known cables
+		'next_cable': 1, #index of next cable
+		'issues': [] #list of all issues
 	}
 
 def release_state():
@@ -69,28 +72,79 @@ def save_state():
 	json.dump(STATE, fds, sort_keys=True, indent=4, separators=(',', ': '))
 
 def find_cable(port1, port2, create = True):
-    """ Find cable in state[ports] """
+    """ Find (and update) cable in state['cables'] """
 
-    for cable in STATE['cables']:
-	if ( #does port1 match?
-		(port1 and cable['port1']['guid'] == port1['guid'] and cable['port1']['port'] == port1['port'])
-		or
-		(port2 and cable['port1']['guid'] == port2['guid'] and cable['port1']['port'] == port2['port'])
-	    ):
-	    return cable;
+    def setup_port(cable_port, port):
+	""" add port into to a cable port (just the minimal for later) """
+	cable_port['guid'] = port['guid']
+	cable_port['port'] = port['port']
+	cable_port['LengthDesc'] = port['LengthDesc'] if 'LengthDesc' in port and port['LengthDesc'] else None
+	cable_port['SN'] = port['SN'] if 'SN' in port and port['SN'] else None
+	cable_port['PN'] = port['PN'] if 'PN' in port and port['PN'] else None 
 
-	if not cable['port2'] == None and ( #does port2 match?
-		(port1 and cable['port2']['guid'] == port1['guid'] and cable['port2']['port'] == port1['port'])
-		or
-		(port2 and cable['port2']['guid'] == port2['guid'] and cable['port2']['port'] == port2['port'])
-	    ):
-	    return cable;
+    def update_ports(cid, port1, port2):
+	""" update the entries for ports """
+
+	if port1:
+	    if not cable['port1']:
+		cable['port1'] = {}
+	    setup_port(cable['port1'], port1)
+	    
+	if port2:
+	    if not cable['port2']:
+		cable['port2'] = {}
+	    setup_port(cable['port2'], port2)
+
+	return cid
+
+    if not port1 and port2:
+	port1 = port2
+	port2 = None
+
+    if port2 and int(port1['guid'], 16) > int(port2['guid'], 16):
+	#always order the ports by largest gid as port 2
+	#order doesnt matter as long as it is stable
+	port_tmp = port2
+	port2 = port1
+	port1 = port_tmp
+
+    if not port1:
+	return None
+
+    for cid,cable in STATE['cables'].iteritems():
+	if int(cable['port1']['guid'],16) == int(port1['guid'],16) and int(cable['port1']['port']) == int(port1['port']):
+	    return update_ports(cid, port1, port2)
+	if port2 and int(cable['port1']['guid'],16) == int(port2['guid'],16) and int(cable['port1']['port']) == int(port2['port']):
+	    return update_ports(cid, port1, port2) 
              	    
-    vlog(5, 'unable to find cable %s <--> %s' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2)))
+    if create:
+	#cable ids must be unique for life
+	cid = STATE['next_cable']
+	STATE['next_cable'] += 1
+
+	vlog(5, 'create cable(%s) %s <--> %s' % (cid, ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2)))
+
+	cable = STATE['cables'][cid] = {
+		'port1': None,
+		'port2': None
+	}
+
+	return update_ports(cid, port1, port2) 
+    else:
+	vlog(5, 'unable to find cable %s <--> %s' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2)))
+	return None
+ 
+def find_cable_issue(cable, issue):
+    """ Find issue in state[issues] """
+
+    for aissue in STATE['issues']:
+	if aissue['issue'] == issue and aissue['cable'] == cable:
+	    return aissue;
+            	    
     return None
 
 
-def add_cable_issue(port1, port2, comment, new_state = 'suspect', skip_ev = False):
+def add_cable_issue(port1, port2, comment, issue, new_state = 'suspect', skip_ev = False):
     """ Add node to bad node list 
     list: list of nodes to add to bnl
     string:: comment as to why added
@@ -98,39 +152,42 @@ def add_cable_issue(port1, port2, comment, new_state = 'suspect', skip_ev = Fals
     """
     global EV, STATE
 
-    #handle single ports
-    if not port1 and port2:
-	port1 = port2
-	port2 = None
+    vlog(3, 'add_cable_issue(%s, %s, %s, %s, %s, %s)' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2), comment, issue, new_state, skip_ev))
 
-    vlog(3, 'add_cable_issue(%s, %s, %s, %s, %s)' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2), comment, new_state, skip_ev))
+    cissue = None
+    cable = None
 
-    cissue = find_cable(port1, port2)
-    if cissue == None:
-	vlog(3, 'new issue %s <--> %s' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2)))
-	cissue = {
-	    'port1': {
-		'guid': port1['guid'],
-		'port': port1['port']
-	    },
-	    'port2':	None,
-	}
+    if port1 or port2:
+	#handle single ports
+	if not port1 and port2:
+	    port1 = port2
+	    port2 = None 
 
-	#add other port if not included and known
+ 	#add other port if not included and known
 	if not port2 and port1['connection']:
 	    port2 = port1['connection']
 	    vlog(3, 'resolving cable other port %s <--> %s' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2)))
+ 
+	cable = find_cable(port1, port2)
+	cissue = find_cable_issue(cable, issue)
 
-	if port2:
-	    cissue['port2'] = {}
-	    cissue['port2']['guid'] = port1['guid']
-	    cissue['port2']['port'] = port1['port']
+    if cissue == None:
+	vlog(2, 'new issue %s <--> %s' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2)))
+	cissue = {
+	    'cable': None,
+	    'comment': None,
+	    'issue': None,
+	    'state': None,
+	    'mtime': None
+	}
 
-	STATE['cables'].append(cissue)
+	STATE['issues'].append(cissue)
 
-
+    cissue['cable'] = cable
     cissue['comment'] = comment
+    cissue['issue'] = issue
     cissue['state'] = new_state
+    cissue['mtime'] = time.time()
 #
 #    pbs.set_offline_nodes(nodes, comment)
 #
@@ -494,32 +551,37 @@ def run_parse(dump_dir):
 
     initialize_state()
 
+    #pp = pprint.PrettyPrinter(indent=4)
+    #pp.pprint(ports)
+ 
+    cmt = 'Autodetected Issue'
+
     for issue in issues['missing']:
-	add_cable_issue(issue['port1'], issue['port2'], 'Missing Cable')
+	add_cable_issue(issue['port1'], issue['port2'], cmt, 'Missing Cable')
 
     for issue in issues['unexpected']:
-	add_cable_issue(issue['port1'], issue['port2'], 'Unexpected Cable')
+	add_cable_issue(issue['port1'], issue['port2'], cmt, 'Unexpected Cable')
   
     for issue in issues['unknown']:
-	add_cable_issue(None, None, issue)
+	add_cable_issue(None, None, cmt, issue)
 
     for issue in issues['label']:
-	add_cable_issue(issue['port'], None, 'Invalid Port Label: %s ' % issue['label'])        
+	add_cable_issue(issue['port'], None, cmt, 'Invalid Port Label: %s ' % issue['label'])        
 
     for issue in issues['counters']:
-	add_cable_issue(issue['port'], None, 'Increase in Port Counter: %s=%s ' % (issue['counter'], issue['value']))        
+	add_cable_issue(issue['port'], None, cmt, 'Increase in Port Counter: %s=%s ' % (issue['counter'], issue['value']))        
 
     for issue in issues['link']:
-	add_cable_issue(issue['port1'], issue['port2'], 'Link Issue: %s ' % (issue['why']))        
+	add_cable_issue(issue['port1'], issue['port2'], cmt, 'Link Issue: %s ' % (issue['why']))        
  
     for issue in issues['speed']:
-	add_cable_issue(issue['port'], None, 'Invalid Port Speed: %s ' % issue['speed'])        
+	add_cable_issue(issue['port'], None, cmt, 'Invalid Port Speed: %s ' % issue['speed'])        
 
     for issue in issues['width']:
-	add_cable_issue(issue['port'], None, 'Invalid Port Width: %s ' % issue['width'])        
+	add_cable_issue(issue['port'], None, cmt, 'Invalid Port Width: %s ' % issue['width'])        
  
     for issue in issues['disabled']:
-	add_cable_issue(issue['port'], None, 'Port Physical Layer Disabled')        
+	add_cable_issue(issue['port'], None, cmt, 'Port Physical Layer Disabled')        
                                                                             
  
     pp = pprint.PrettyPrinter(indent=4)
