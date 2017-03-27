@@ -10,7 +10,6 @@ import os
 import syslog
 import pbs
 import siblings
-import sgi_cluster
 import cluster_info
 import file_locking
 import ib_diagnostics
@@ -91,7 +90,7 @@ def find_cable(port1, port2, create = True):
     return None
 
 
-def add_cables(port1, port2, comment, new_state = 'suspect', skip_ev = False):
+def add_cable_issue(port1, port2, comment, new_state = 'suspect', skip_ev = False):
     """ Add node to bad node list 
     list: list of nodes to add to bnl
     string:: comment as to why added
@@ -104,7 +103,7 @@ def add_cables(port1, port2, comment, new_state = 'suspect', skip_ev = False):
 	port1 = port2
 	port2 = None
 
-    vlog(3, 'add_cables(%s, %s, %s, %s, %s)' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2), comment, new_state, skip_ev))
+    vlog(3, 'add_cable_issue(%s, %s, %s, %s, %s)' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2), comment, new_state, skip_ev))
 
     cissue = find_cable(port1, port2)
     if cissue == None:
@@ -485,8 +484,10 @@ def run_parse(dump_dir):
     with open('%s/%s' % (dump_dir,'ibdiagnet2.log') , 'r') as fds:
 	ib_diagnostics.parse_ibdiagnet(ports, issues, fds.read()) 
 
-    with open('%s/%s' % (dump_dir,'sgi-ibcv2.log') , 'r') as fds:
-	ib_diagnostics.parse_sgi_ibcv2(ports, issues, fds.read()) 
+    p_ibcv2 = '%s/%s' % (dump_dir,'sgi-ibcv2.log') #optional
+    if os.path.isfile(p_ibcv2):
+	with open(p_ibcv2, 'r') as fds:
+	    ib_diagnostics.parse_sgi_ibcv2(ports, issues, fds.read()) 
 
     ibsp = cluster_info.get_ib_speed()
     ib_diagnostics.find_underperforming_cables ( ports, issues, ibsp['speed'], ibsp['width'])
@@ -494,31 +495,31 @@ def run_parse(dump_dir):
     initialize_state()
 
     for issue in issues['missing']:
-	add_cables(issue['port1'], issue['port2'], 'Missing Cable')
+	add_cable_issue(issue['port1'], issue['port2'], 'Missing Cable')
 
     for issue in issues['unexpected']:
-	add_cables(issue['port1'], issue['port2'], 'Unexpected Cable')
+	add_cable_issue(issue['port1'], issue['port2'], 'Unexpected Cable')
   
     for issue in issues['unknown']:
-	add_cables(None, None, issue)
+	add_cable_issue(None, None, issue)
 
     for issue in issues['label']:
-	add_cables(issue['port'], None, 'Invalid Port Label: %s ' % issue['label'])        
+	add_cable_issue(issue['port'], None, 'Invalid Port Label: %s ' % issue['label'])        
 
     for issue in issues['counters']:
-	add_cables(issue['port'], None, 'Increase in Port Counter: %s=%s ' % (issue['counter'], issue['value']))        
+	add_cable_issue(issue['port'], None, 'Increase in Port Counter: %s=%s ' % (issue['counter'], issue['value']))        
 
     for issue in issues['link']:
-	add_cables(issue['port1'], issue['port2'], 'Link Issue: %s ' % (issue['why']))        
+	add_cable_issue(issue['port1'], issue['port2'], 'Link Issue: %s ' % (issue['why']))        
  
     for issue in issues['speed']:
-	add_cables(issue['port'], None, 'Invalid Port Speed: %s ' % issue['speed'])        
+	add_cable_issue(issue['port'], None, 'Invalid Port Speed: %s ' % issue['speed'])        
 
     for issue in issues['width']:
-	add_cables(issue['port'], None, 'Invalid Port Width: %s ' % issue['width'])        
+	add_cable_issue(issue['port'], None, 'Invalid Port Width: %s ' % issue['width'])        
  
     for issue in issues['disabled']:
-	add_cables(issue['port'], None, 'Port Physical Layer Disabled')        
+	add_cable_issue(issue['port'], None, 'Port Physical Layer Disabled')        
                                                                             
  
     pp = pprint.PrettyPrinter(indent=4)
@@ -586,8 +587,8 @@ None  None  Suspect 4343 Unknown
 	    
     """.format(argv[0]))
 
-if not sgi_cluster.is_sac():
-    die_now("Only run this on the SAC node")
+if not cluster_info.is_mgr():
+    die_now("Only run this on the cluster manager")
 
 BAD_CABLE_DB='/etc/ncar_bad_cable_list.json'
 BAD_CABLE_DB_BACKUP='/etc/ncar_bad_cable_list.backup.json'
