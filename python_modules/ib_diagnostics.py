@@ -119,7 +119,7 @@ def parse_port ( label ):
 		    ) 
 	match = ib_portname_type3_regex.match(label) 
 	if match:
-	    guid = '0x{}'.format(match.group('guid'))
+	    guid = '0x{0}'.format(match.group('guid'))
 	    if match.group('port'):
 	        port = int(match.group('port'))
 
@@ -382,7 +382,7 @@ def parse_sgi_ibcv2 ( ports, issues, contents ):
 	    #'r1i3s0 SW0 SwitchX -  Mellanox Technologies'
 
 	    return resolve_port(ports, {
-		'name': 'r{}i{}s{} SW{} SwitchX -  Mellanox Technologies'.format(
+		'name': 'r{0}i{1}s{2} SW{3} SwitchX -  Mellanox Technologies'.format(
 		    int(math.ceil(float(match.group('rack')) / 2.0)), #convert rack to ecell
 		    match.group('iru'),
 		    match.group('switch'),
@@ -575,16 +575,16 @@ def resolve_port(ports, port):
 	    #if port['guid'] == pport['guid'] and port['port'] == pport['port']:
 	    if int(port['guid'], 16) == int(pport['guid'], 16) and int(port['port']) == int(pport['port']):
 		return pport
-	vlog(5, 'unable to resolve port: GUID={} PortNum={}'.format(port['guid'], port['port']))
+	vlog(5, 'unable to resolve port: GUID={0} PortNum={1}'.format(port['guid'], port['port']))
 
     if 'name' in port and port['name'] and port['port'] and port['name'] != "localhost":
  	for pport in ports:
 	    if port['name'] == pport['name'] and int(port['port']) == int(pport['port']):
 		return pport
 
-	vlog(5, 'unable to resolve port: Name={} PortNum={}'.format(port['name'], port['port']))
+	vlog(5, 'unable to resolve port: Name={0} PortNum={1}'.format(port['name'], port['port']))
 
-    vlog(4, 'unable to resolve port: {}'.format(port))
+    vlog(4, 'unable to resolve port: {0}'.format(port))
     return None
  
 def resolve_update_port(ports, port):
@@ -595,7 +595,7 @@ def resolve_update_port(ports, port):
 	return None
 
     if int(port['port']) == 0:
-	vlog(4, 'ignoring loopback port {}/P{}'.format(port['guid'],port['port']))
+	vlog(4, 'ignoring loopback port {0}/P{1}'.format(port['guid'],port['port']))
 	return None
 
     pport = resolve_port(ports, port)

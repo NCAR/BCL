@@ -578,8 +578,8 @@ def dump_help():
 	    5: highest
 
 
-Port1 Port2 STATE   EV   Comment
-None  None  Suspect 4343 Unknown
+Port1 Port2 STATE   EV   Comment Issues
+None  None  Suspect 4343 Unknown 
     errors
     errors
 

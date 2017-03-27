@@ -36,11 +36,11 @@ def get_ice_info(node):
 
     return {
 	'rack':	m.group(1),
-	'lead':	'r{}lead'.format(m.group(1)),
-	'cmc':	'r{}i{}c'.format(m.group(1), m.group(2)),
+	'lead':	'r{0}lead'.format(m.group(1)),
+	'cmc':	'r{0}i{1}c'.format(m.group(1), m.group(2)),
 	'iru':	m.group(2),
 	'node':	m.group(3),
-	'bmc':	'r{}i{}n{}-bmc'.format(m.group(1), m.group(2), m.group(3))
+	'bmc':	'r{0}i{1}n{2}-bmc'.format(m.group(1), m.group(2), m.group(3))
     }
 
 def get_lead(node):
@@ -57,7 +57,7 @@ def get_lead(node):
 def get_bmc(node):
     """ get node bmc name """
     
-    return "{}-bmc".format(node)
+    return "{0}-bmc".format(node)
  
 def get_sm():
     """ get smc nodes """

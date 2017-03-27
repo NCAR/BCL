@@ -45,7 +45,7 @@ def command(nodeset, command):
 	lead = sgi_cluster.get_lead(node)
 	if lead:
 	    task.shell(
-		'/usr/diags/bin/bcmd -H {} {}'.format(sgi_cluster.get_bmc(node), command), 
+		'/usr/diags/bin/bcmd -H {0} {1}'.format(sgi_cluster.get_bmc(node), command), 
 		nodes=lead, 
 		timeout=30,  
 		handler=__OutputHandler(node, output)

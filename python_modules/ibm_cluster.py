@@ -48,7 +48,7 @@ def get_sm():
 def get_bmc(node):
     """ get node bmc name """
     
-    return "{}-imm".format(node)
+    return "{0}-imm".format(node)
 
 def get_ib_speed():
     """ get Infiniband network speed """
