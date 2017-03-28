@@ -40,9 +40,12 @@ def initialize_state():
 	vlog(2, 'Initializing new state database')
 
 	STATE = {
-		'cables': {}, #dict of index->cable of all known cables
-		'next_cable': 1, #index of next cable
-		'issues': [] #list of all issues
+		'cables':	{}, #dict of index->cable of all known cables
+		'next_cable':	1,  #index of next cable
+		'issues':	{}, #list of all issues
+		'next_issue':	1,  #index of next issue
+		'problems':	{}, #list of all problems
+		'next_problem':	1   #index of next problem
 	}
 
 def release_state():
@@ -81,6 +84,7 @@ def find_cable(port1, port2, create = True):
 	cable_port['LengthDesc'] = port['LengthDesc'] if 'LengthDesc' in port and port['LengthDesc'] else None
 	cable_port['SN'] = port['SN'] if 'SN' in port and port['SN'] else None
 	cable_port['PN'] = port['PN'] if 'PN' in port and port['PN'] else None 
+	cable_port['plabel'] = ib_diagnostics.port_pretty(port)
 
     def update_ports(cid, port1, port2):
 	""" update the entries for ports """
@@ -133,29 +137,15 @@ def find_cable(port1, port2, create = True):
     else:
 	vlog(5, 'unable to find cable %s <--> %s' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2)))
 	return None
- 
-def find_cable_issue(cable, issue):
-    """ Find issue in state[issues] """
 
-    for aissue in STATE['issues']:
-	if aissue['issue'] == issue and aissue['cable'] == cable:
-	    return aissue;
-            	    
-    return None
-
-
-def add_cable_issue(port1, port2, comment, issue, new_state = 'suspect', skip_ev = False):
-    """ Add node to bad node list 
-    list: list of nodes to add to bnl
-    string:: comment as to why added
-    new_state: give state if not already a bad node
-    """
+def add_issue(port1, port2, issue):
+    """ Add issue to issues list """
     global EV, STATE
 
-    vlog(3, 'add_cable_issue(%s, %s, %s, %s, %s, %s)' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2), comment, issue, new_state, skip_ev))
+    vlog(3, 'add_issue(%s, %s, %s)' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2), issue))
 
     cissue = None
-    cable = None
+    cid = None
 
     if port1 or port2:
 	#handle single ports
@@ -168,60 +158,100 @@ def add_cable_issue(port1, port2, comment, issue, new_state = 'suspect', skip_ev
 	    port2 = port1['connection']
 	    vlog(3, 'resolving cable other port %s <--> %s' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2)))
  
-	cable = find_cable(port1, port2)
-	cissue = find_cable_issue(cable, issue)
+	cid = find_cable(port1, port2)
+
+    iid = None
+    #check if there is already an existing issue
+    for aid, aissue in STATE['issues'].iteritems():
+	if aissue['issue'] == issue and aissue['cable'] == cid:
+	    cissue = aissue;
+	    iid = aid
 
     if cissue == None:
-	vlog(2, 'new issue %s <--> %s' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2)))
+ 	iid = STATE['next_issue']
+	STATE['next_issue'] += 1
+ 
+	vlog(2, 'new issue(%s) %s <--> %s' % (iid, ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2)))
 	cissue = {
-	    'cable': None,
-	    'comment': None,
-	    'issue': None,
-	    'state': None,
-	    'mtime': None
+	    'cable': cid,
+	    'issue': issue,
+	    'mtime': None,
 	}
 
-	STATE['issues'].append(cissue)
+	STATE['issues'][iid] = cissue
 
-    cissue['cable'] = cable
-    cissue['comment'] = comment
-    cissue['issue'] = issue
-    cissue['state'] = new_state
     cissue['mtime'] = time.time()
+    add_problem('New Issue', iid, None)
+
+def add_problem(comment, issue_id = None, new_state = None):
+    """ create a problem against an issue """
+    global EV, STATE
+
+    vlog(4, 'add_problem(%s, %s, %s)' % (comment, issue_id, new_state))
+
+    #determine if problem already exists for this issue or cable
+    pid = None
+    prob = None
+
+    if issue_id:
+	cid = STATE['issues'][issue_id]['cable']
+
+	for apid,aprob in STATE['problems'].iteritems():
+	    if (cid and cid in aprob['cables']) or issue_id in aprob['issues']:
+		pid = apid
+		prob = aprob
+		break
+
+    #add problem against issue
+    if not prob:
+	pid = STATE['next_problem']
+	STATE['next_problem'] += 1
+
+	if new_state is None:
+	    new_state = 'new'
+
+	vlog(2, 'new problem(%s) ' % (pid))
+	prob = {
+	    'state': new_state,
+	    'comment': comment,
+	    'cables': [],
+	    'issues': [],
+	    'extraview': []
+	}
+	
+	STATE['problems'][pid] = prob
+
+    #make sure issue and cable are in problem
+    if issue_id:
+	if not issue_id in prob['issues']:
+	    vlog(4, 'adding issue %s to problem %s' % (issue_id, pid))
+	    prob['issues'].append(issue_id)
+
+	cid = STATE['issues'][issue_id]['cable']
+	if cid and not cid in prob['cables']:
+ 	    vlog(4, 'adding cable %s to problem %s' % (cid, pid))
+	    prob['cables'].append(cid)                      
+ 
+
+#    if len(cissue['extraview']) < 1 and not skip_ev:
+#	ev_id = EV.create( \
+#		'ssgev', \
+#		'ssg', \
+#		'nate', \
+#		'-----TEST----- %s: Bad Cable %s' % (cluster_info.get_cluster_name_formal(), cname), \
+#		'%s has been added to the %s bad cable list.' % (cname, cluster_info.get_cluster_name_formal()), { \
+#		    'HELP_LOCATION': EV.get_field_value_to_field_key('HELP_LOCATION', 'NWSC'),
+#		    'HELP_HOSTNAME': EV.get_field_value_to_field_key('HELP_HOSTNAME', cluster_info.get_cluster_name_formal()),
+#		    'HELP_HOSTNAME_OTHER': cname
+#		})
 #
-#    pbs.set_offline_nodes(nodes, comment)
+#	if ev_id:
+#	     cissue['extraview'].append(ev_id)
+#	     vlog(3, 'Opened Extraview Ticket %s for bad cable %s' % (ev_id, cable))
 #
-#    for node in nodes:
-#	if not node in STATE['nodes']:
-#	    STATE['nodes'][node] = {
-#		    'extraview': [],  #assigned EV tickets
-#		    'siblings': [],   #sibling nodes that need this node down
-#		    'comment': comment, #last comment 
-#		    'state': new_state  #current state
-#		}
-#	    vlog(3, 'Added %s' % (node))
-#
-#	if len(STATE['nodes'][node]['extraview']) < 1 and not skip_ev:
-#	    ev_id = EV.create( \
-#		    'ssgev', \
-#		    'ssg', \
-#		    None, \
-#		    '%s: Bad Node %s' % (sgi_cluster.get_cluster_name_formal(), node), \
-#		    '%s has been added to the %s bad node list.' % (node, sgi_cluster.get_cluster_name_formal()),
-#		    {
-#			'HELP_LOCATION': EV.get_field_value_to_field_key('HELP_LOCATION', 'NWSC'),
-#			'HELP_HOSTNAME': EV.get_field_value_to_field_key('HELP_HOSTNAME', sgi_cluster.get_cluster_name_formal()),
-#			'HELP_HOSTNAME_OTHER': node
-#		    }
-#		) 
-#	    if ev_id:
-#		STATE['nodes'][node]['extraview'].append(ev_id)
-#		vlog(3, 'Opened Extraview Ticket %s for %s' % (ev_id, node))
-#
-#	for ev_id in STATE['nodes'][node]['extraview']:
-#	    EV.add_resolver_comment(ev_id, 'Bad Node Comment:\n%s' % comment)
-# 
-#    save_state()
+#    for ev_id in cissue['extraview']:
+#	EV.add_resolver_comment(ev_id, 'Bad Cable Comment:\n%s' % comment)
+ 
 #
 #def del_nodes(nodes, comment):
 #    """ release node from bad node list """
@@ -554,34 +584,32 @@ def run_parse(dump_dir):
     #pp = pprint.PrettyPrinter(indent=4)
     #pp.pprint(ports)
  
-    cmt = 'Autodetected Issue'
-
     for issue in issues['missing']:
-	add_cable_issue(issue['port1'], issue['port2'], cmt, 'Missing Cable')
+	add_issue(issue['port1'], issue['port2'], 'Missing Cable')
 
     for issue in issues['unexpected']:
-	add_cable_issue(issue['port1'], issue['port2'], cmt, 'Unexpected Cable')
+	add_cable_issue(issue['port1'], issue['port2'], 'Unexpected Cable')
   
     for issue in issues['unknown']:
-	add_cable_issue(None, None, cmt, issue)
+	add_issue(None, None, issue)
 
     for issue in issues['label']:
-	add_cable_issue(issue['port'], None, cmt, 'Invalid Port Label: %s ' % issue['label'])        
+	add_issue(issue['port'], None, 'Invalid Port Label: %s ' % issue['label'])        
 
     for issue in issues['counters']:
-	add_cable_issue(issue['port'], None, cmt, 'Increase in Port Counter: %s=%s ' % (issue['counter'], issue['value']))        
+	add_issue(issue['port'], None, 'Increase in Port Counter: %s=%s ' % (issue['counter'], issue['value']))        
 
     for issue in issues['link']:
-	add_cable_issue(issue['port1'], issue['port2'], cmt, 'Link Issue: %s ' % (issue['why']))        
+	add_issue(issue['port1'], issue['port2'], 'Link Issue: %s ' % (issue['why']))        
  
     for issue in issues['speed']:
-	add_cable_issue(issue['port'], None, cmt, 'Invalid Port Speed: %s ' % issue['speed'])        
+	add_issue(issue['port'], None, 'Invalid Port Speed: %s ' % issue['speed'])        
 
     for issue in issues['width']:
-	add_cable_issue(issue['port'], None, cmt, 'Invalid Port Width: %s ' % issue['width'])        
+	add_issue(issue['port'], None, 'Invalid Port Width: %s ' % issue['width'])        
  
     for issue in issues['disabled']:
-	add_cable_issue(issue['port'], None, cmt, 'Port Physical Layer Disabled')        
+	add_issue(issue['port'], None, 'Port Physical Layer Disabled')        
                                                                             
  
     pp = pprint.PrettyPrinter(indent=4)
