@@ -333,13 +333,10 @@ def list_state(what):
 			    cable['port1']['plabel'] if cable['port1'] else 'None',
 			    cable['port2']['plabel'] if cable['port2'] else 'None'
 			)
-
 		    print '{0:>20} c{1}: {2}'.format('Cable',cid, fwlabel)           
 
 	    for iid in prob['issues']:
 		issue = STATE['issues'][str(iid)]
-
-
 		print '{0:>20} i{1}: {2}'.format('Issue',iid, issue['issue'])
 
 
