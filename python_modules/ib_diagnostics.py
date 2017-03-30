@@ -589,17 +589,19 @@ def resolve_port(ports, port):
     #match by port label
     if 'name' in port and port['name'] and port['port'] and port['name'] != "localhost":
  	for pport in ports:
-	    match = True;
-	    for key in ['name', 'hca', 'leaf', 'spine', 'port']:
-		if key in port and key in pport:
-		    if port[key] != pport[key]:
-			match = False
-		elif (key in port) != (key in pport):
-		    #defined in one and not the other?
-		    match = False
+	    if port['name'] == pport['name'] and int(port['port']) == int(pport['port']):
+		match = True;
 
-	    if match:
-		return pport
+		for key in ['hca', 'leaf', 'spine']:
+		    if key in port and key in pport:
+			if port[key] != pport[key]:
+			    match = False
+		    elif (key in port) != (key in pport):
+			#defined in one and not the other?
+			match = False
+
+		if match:
+		    return pport
 
 	vlog(5, 'unable to resolve port: Name={0} PortNum={1} HCA={2} Leaf={3} Spine={4}'.format(
 	    port['name'], 
