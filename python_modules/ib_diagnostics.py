@@ -40,6 +40,7 @@ def parse_port ( label ):
     spine = None #only used for internal orca connections
     port  = None   
     guid  = None   
+    unit  = None #chip unit or hca count
 
     #regex matches following:
     #'ys4618 HCA-1'(4594/1)
@@ -64,7 +65,7 @@ def parse_port ( label ):
 		    (?:\/[hcaHCA]{1,3}(?P<hca_id2>\d+)|)	#HCA number
 		    (?:\/[lLiIdD]+(?P<leaf>\d+)|)		#Leaf (sometimes called /LID in error)
 		    (?:\/S(?P<spine>\d+)|)			#Spine
-		    (?:\/U\d+|)					#U number
+		    (?:\/U(?P<unit>\d+)|)			#U number
 		    (?:\/P(?P<port1>\d+)|)			#Port
 		)
 		(?:
@@ -92,6 +93,8 @@ def parse_port ( label ):
 	    spine = match.group('spine')
 	    hca = match.group('hca_id2')
 	    leaf = match.group('leaf') 
+	if match.group('unit'):
+	    hca = match.group('unit') 
 	if match.group('port1'):
 	    port = match.group('port1')
 	if match.group('port2'):
@@ -300,7 +303,7 @@ def port_pretty ( port ):
     if port['leaf']: #port on orca
 	return '%s/L%s/P%s' % (port['name'], port['leaf'], port['port']) 
     if port['hca']: #hca on node
-	return '%s/HCA%s/P%s' % (port['name'], port['hca'], port['port'])
+	return '%s/U%s/P%s' % (port['name'], port['hca'], port['port'])
 
     name = port['name']
     name = re.sub(r'\s*SwitchX\s*-\s*Mellanox\ Technologies', '', name)
@@ -388,7 +391,10 @@ def parse_sgi_ibcv2 ( ports, issues, contents ):
 		    match.group('switch'),
 		    match.group('swchip')
 		),
-		'port': int(match.group('port'))
+		'port': int(match.group('port')),
+		'hca': None,
+		'spine': None,
+		'leaf': None
 	    })
 	else:
 	    vlog(2, 'unable to parse ibcv2 port %s' % label)
@@ -572,6 +578,7 @@ def resolve_port(ports, port):
 	vlog(4, 'unable to resolve none port')
 	return None
 
+    #match by guid (preferred match)
     if 'guid' in port and port['guid'] and port['port']:
 	for pport in ports:
 	    #if port['guid'] == pport['guid'] and port['port'] == pport['port']:
@@ -579,12 +586,28 @@ def resolve_port(ports, port):
 		return pport
 	vlog(5, 'unable to resolve port: GUID={0} PortNum={1}'.format(port['guid'], port['port']))
 
+    #match by port label
     if 'name' in port and port['name'] and port['port'] and port['name'] != "localhost":
  	for pport in ports:
-	    if port['name'] == pport['name'] and int(port['port']) == int(pport['port']):
+	    match = True;
+	    for key in ['name', 'hca', 'leaf', 'spine', 'port']:
+		if key in port and key in pport:
+		    if port[key] != pport[key]:
+			match = False
+		elif (key in port) != (key in pport):
+		    #defined in one and not the other?
+		    match = False
+
+	    if match:
 		return pport
 
-	vlog(5, 'unable to resolve port: Name={0} PortNum={1}'.format(port['name'], port['port']))
+	vlog(5, 'unable to resolve port: Name={0} PortNum={1} HCA={2} Leaf={3} Spine={4}'.format(
+	    port['name'], 
+	    port['port'],
+	    port['hca'],
+	    port['leaf'],
+	    port['spine']
+	))
 
     vlog(4, 'unable to resolve port: {0}'.format(port))
     return None

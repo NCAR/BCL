@@ -78,14 +78,31 @@ def save_state():
 def find_cable(port1, port2, create = True):
     """ Find (and update) cable in state['cables'] """
 
+
     def setup_port(cable_port, port):
 	""" add port into to a cable port (just the minimal for later) """
-	cable_port['guid'] = port['guid']
-	cable_port['port'] = port['port']
-	cable_port['LengthDesc'] = port['LengthDesc'] if 'LengthDesc' in port and port['LengthDesc'] else None
-	cable_port['SN'] = port['SN'] if 'SN' in port and port['SN'] else None
-	cable_port['PN'] = port['PN'] if 'PN' in port and port['PN'] else None 
-	cable_port['plabel'] = ib_diagnostics.port_pretty(port)
+
+	def assign_check_port_key(old_port, new_port, key):
+	    """ assign new_port key value and check if it changes and log """
+	    if key in new_port:
+		if not key in old_port or old_port[key] != new_port[key]:
+		    if key in old_port:
+			vlog(3, 'port %s key %s value changed from %s to %s' % (ib_diagnostics.port_pretty(port), key,old_port[key], new_port[key]))
+		    old_port[key] = new_port[key]
+	    else:
+		if key in old_port:
+		    vlog(4, 'port %s key %s value is None' % (ib_diagnostics.port_pretty(port), key))
+		else:
+		    old_port[key] = None
+
+	for key in ['guid','port','LengthDesc','SN','PN']:
+             assign_check_port_key(cable_port, port, key)
+
+	plabel = ib_diagnostics.port_pretty(port)
+	if not 'plabel' in cable_port or cable_port['plabel'] != plabel:
+	    if 'plabel' in cable_port:
+		vlog(3, 'port physical label change from %s to %s' % (cable_port['plabel'], plabel))
+	    cable_port['plabel'] = ib_diagnostics.port_pretty(port)
 
     def update_ports(cid, port1, port2):
 	""" update the entries for ports """
@@ -686,7 +703,7 @@ def run_parse(dump_dir):
 	add_issue(issue['port1'], issue['port2'], 'Missing Cable')
 
     for issue in issues['unexpected']:
-	add_cable_issue(issue['port1'], issue['port2'], 'Unexpected Cable')
+	add_issue(issue['port1'], issue['port2'], 'Unexpected Cable')
   
     for issue in issues['unknown']:
 	add_issue(None, None, issue)
