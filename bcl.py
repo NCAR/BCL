@@ -5,7 +5,7 @@ import extraview_cli
 from nlog import vlog,die_now
 from ClusterShell.NodeSet import NodeSet
 from ClusterShell.Task import task_self
-import json
+import yaml
 import os
 import syslog
 import pbs
@@ -19,7 +19,7 @@ import datetime
 
 def initialize_state():
     """ Initialize DATABASE state variable 
-    Attempts to load JSON file but will default to clean state table
+    Attempts to load Yaml file but will default to clean state table
     """
     global BAD_CABLE_DB, STATE, LOCK
 
@@ -28,11 +28,9 @@ def initialize_state():
 	if not LOCK:
 	    die_now("unable to obtain lock. please try again later.")
      
-    jsonraw = None
-
     try:
 	with open(BAD_CABLE_DB, 'r') as fds:
-	    STATE = json.load(fds)
+	    STATE = yaml.load(fds)
     except Exception as err:
 	vlog(1, 'Unable to Open DB: {0}'.format(err))
 	STATE = {}
@@ -71,13 +69,12 @@ def save_state():
     if os.path.isfile(BAD_CABLE_DB):
 	os.rename(BAD_CABLE_DB, BAD_CABLE_DB_BACKUP)
 
-    #Save json database of STATE
+    #Save yaml database of STATE
     with open(BAD_CABLE_DB, 'w') as fds:
-	json.dump(STATE, fds, sort_keys=True, indent=4, separators=(',', ': '))
+	yaml.dump(STATE, fds)
 
 def find_cable(port1, port2, create = True):
     """ Find (and update) cable in state['cables'] """
-
 
     def setup_port(cable_port, port):
 	""" add port into to a cable port (just the minimal for later) """
@@ -241,6 +238,7 @@ def add_problem(comment, issue_id = None, new_state = None):
 
     #make sure issue and cable are in problem
     if issue_id:
+	print 'add %s bool=%s list=%s' % (issue_id,not issue_id in prob['issues'],prob['issues'])
 	if not issue_id in prob['issues']:
 	    vlog(4, 'adding issue %s to problem %s' % (issue_id, pid))
 	    prob['issues'].append(issue_id)
@@ -345,7 +343,7 @@ def list_state(what):
 		)    
 
  	    for cid in prob['cables']:
-		    cable = STATE['cables'][str(cid)] 
+		    cable = STATE['cables'][cid] 
 		    fwlabel = '{0} <--> {1}'.format(
 			    cable['port1']['plabel'] if cable['port1'] else 'None',
 			    cable['port2']['plabel'] if cable['port2'] else 'None'
@@ -353,7 +351,7 @@ def list_state(what):
 		    print '{0:>20} c{1}: {2}'.format('Cable',cid, fwlabel)           
 
 	    for iid in prob['issues']:
-		issue = STATE['issues'][str(iid)]
+		issue = STATE['issues'][iid]
 		print '{0:>20} i{1}: {2}'.format('Issue',iid, issue['issue'])
  
     release_state()
@@ -384,10 +382,12 @@ def run_parse(dump_dir):
 
     initialize_state()
 
-    pp = pprint.PrettyPrinter(indent=4)
-    pp.pprint(issues['missing'])
-    print(issues['missing'])
- 
+    #add every known cable to database (slow but keeps sane list of all cables ever)
+    for port in ports:
+	find_cable(port, port['connection'], True)
+
+    #walk every issue type and add them
+
     for issue in issues['missing']:
 	add_issue(issue['port1'], issue['port2'], 'Missing Cable')
 
@@ -395,7 +395,7 @@ def run_parse(dump_dir):
 	add_issue(issue['port1'], issue['port2'], 'Unexpected Cable')
   
     for issue in issues['unknown']:
-	add_issue(None, None, issue)
+	add_issue(issue['port1'], issue['port2'], issue['why'])
 
     for issue in issues['label']:
 	add_issue(issue['port'], None, 'Invalid Port Label: %s ' % issue['label'])        
@@ -484,8 +484,8 @@ None  None  Suspect 4343 Unknown
 if not cluster_info.is_mgr():
     die_now("Only run this on the cluster manager")
 
-BAD_CABLE_DB='/etc/ncar_bad_cable_list.json'
-BAD_CABLE_DB_BACKUP='/etc/ncar_bad_cable_list.backup.json'
+BAD_CABLE_DB='/etc/ncar_bad_cable_list.yaml'
+BAD_CABLE_DB_BACKUP='/etc/ncar_bad_cable_list.backup.yaml'
 """ const string: Path to JSON database for bad cable list """
 
 STATE={}
