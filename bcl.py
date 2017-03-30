@@ -15,6 +15,7 @@ import file_locking
 import ib_diagnostics
 import pprint
 import time
+import datetime
 
 def initialize_state():
     """ Initialize DATABASE state variable 
@@ -251,7 +252,118 @@ def add_problem(comment, issue_id = None, new_state = None):
 #
 #    for ev_id in cissue['extraview']:
 #	EV.add_resolver_comment(ev_id, 'Bad Cable Comment:\n%s' % comment)
+
+
+def list_state(what):
+    """ dump state to user """
+
+    initialize_state()
+
+    if what == 'problems':
+	f='{0:<10}{1:<10}{2:<20}{3:<20}{4:<20}{5:<50}'
+	print f.format("pid","state","extraview","cables","issues","comment")
+
+	for pid,prob in STATE['problems'].iteritems():
+	    cables = '-'
+	    if len(prob['cables']):
+		cables = ','.join(map(lambda x: 'c%s' % (str(x)), prob['cables']))
+
+	    issues = '-'
+	    if len(prob['issues']):
+		issues = ','.join(map(lambda x: 'i%s' % (str(x)), prob['issues']))
+
+	    print f.format(
+		    'p%s' % pid,
+		    prob['state'], 
+		    ','.join(map(str, prob['extraview'])) if len(prob['extraview']) else '-', 
+		    cables,
+		    issues,
+		    prob['comment']
+		)
+    elif what == 'issues':
+	f='{0:<10}{1:<10}{2:<25}{3:<50}'
+ 	print f.format("issue_id","cable","last_seen","issue")
+	for iid,issue in STATE['issues'].iteritems():
+	    print f.format(
+		    'i%s' % iid,
+		    '-' if not issue['cable'] else 'c%s' % issue['cable'],
+		    datetime.datetime.fromtimestamp( int(issue['mtime'])).strftime('%Y-%m-%d %H:%M:%S'),
+		    issue['issue']
+		)     
+    elif what == 'cables':
+	f='{0:<10}{1:<7}{2:<15}{3:<17}{4:<50}{5:<50}'
+ 	print f.format("cable_id","length","Serial_Number","Product_Number","Firmware Label","Physical Label")
+	for cid,cable in STATE['cables'].iteritems():
+	    fwlabel = '{0} <--> {1}'.format(
+		    cable['port1']['plabel'] if cable['port1'] else 'None',
+		    cable['port2']['plabel'] if cable['port2'] else 'None'
+		)
+	    clen = '-'
+	    SN = '-'
+	    PN = '-'
+	    if cable['port1']:
+		#cables have same PN/SN/length on both ports
+		clen = cable['port1']['LengthDesc'] if cable['port1']['LengthDesc'] else '-'
+		SN = cable['port1']['SN'] if cable['port1']['SN'] else '-'
+		PN = cable['port1']['PN'] if cable['port1']['PN'] else '-'
+	    
+	    plabel = fwlabel #TODO# add real -- temp fix --
+	    print f.format(
+		    'c%s' % cid,
+		    clen,
+		    SN,
+		    PN,
+		    fwlabel,
+		    plabel
+		)     
+    elif what == 'action':
+	f='{0:<10}{1:<10}{2:<20}{3:<100}'
+	print f.format("pid","state","extraview","comment")
+	for pid,prob in STATE['problems'].iteritems():
+	    print f.format(
+		    'p%s' % pid,
+		    prob['state'], 
+		    ','.join(map(str, prob['extraview'])) if len(prob['extraview']) else '-', 
+		    prob['comment']
+		)    
+
+ 	    for cid in prob['cables']:
+		    cable = STATE['cables'][str(cid)] 
+		    fwlabel = '{0} <--> {1}'.format(
+			    cable['port1']['plabel'] if cable['port1'] else 'None',
+			    cable['port2']['plabel'] if cable['port2'] else 'None'
+			)
+
+		    print '{0:>20} c{1}: {2}'.format('Cable',cid, fwlabel)           
+
+	    for iid in prob['issues']:
+		issue = STATE['issues'][str(iid)]
+
+
+		print '{0:>20} i{1}: {2}'.format('Issue',iid, issue['issue'])
+
+
+
  
+    release_state()
+	
+#    for node,state in STATE['nodes'].iteritems():
+#       if len(nodelist) == 0 or node in nodelist:
+#	   print '{:<20}{:<20}{:<20}{:<20}'.format(node,state['state'], ','.join(state['extraview']),state['comment'])
+ 
+
+
+
+#    nodelist = []
+#    if nodes != '':
+#       nodelist = list(nodes)
+#
+#    print '{:<20}{:<20}{:<20}{:<20}'.format('Node','state','Extraview','comment')
+#    for node,state in STATE['nodes'].iteritems():
+#       if len(nodelist) == 0 or node in nodelist:
+#	   print '{:<20}{:<20}{:<20}{:<20}'.format(node,state['state'], ','.join(state['extraview']),state['comment'])
+ 
+
 #
 #def del_nodes(nodes, comment):
 #    """ release node from bad node list """
@@ -283,18 +395,7 @@ def add_problem(comment, issue_id = None, new_state = None):
 # 
 #    save_state()
 #
-#def list_state(nodes):
-#    """ dump state to user """
-#
-#    nodelist = []
-#    if nodes != '':
-#	nodelist = list(nodes)
-#
-#    print '{:<20}{:<20}{:<20}{:<20}'.format('Node','state','Extraview','comment')
-#    for node,state in STATE['nodes'].iteritems():
-#	if len(nodelist) == 0 or node in nodelist:
-#	    print '{:<20}{:<20}{:<20}{:<20}'.format(node,state['state'], ','.join(state['extraview']),state['comment'])
-# 
+
 #def comment_nodes(nodes, comment):
 #    """ add comment to nodes """
 #    global EV
@@ -699,6 +800,8 @@ if len(argv) < 2:
     dump_help() 
 elif argv[1] == 'parse':
     run_parse(argv[2])  
+elif argv[1] == 'list':
+    list_state(argv[2])  
 #elif argv[1] == 'auto':
 #    run_auto() 
 #elif argv[1] == 'list':
