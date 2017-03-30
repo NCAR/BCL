@@ -516,8 +516,25 @@ def parse_ibdiagnet ( ports, issues, contents ):
 				'Links Check finished with errors',
 				'Fabric Discover finished with errors'
 			    ]:
-			       vlog(4,'IBDiagnet2 unknown: %s: %s' % (match.group('label'), lmatch.group('msg')))
-			       issues['unknown'].append('%s: %s' % (match.group('label'), lmatch.group('msg')))
+
+			    port1 = None
+			    port2 = None
+
+			    #attempt to brute force resolve a port from each word
+			    for w in lmatch.group('msg').split():
+				port = parse_resolve_port(ports, w)
+				if port:
+				    if not port1:
+					port1 = port
+				    elif not port2:
+					port2 = port
+
+			    vlog(4,'IBDiagnet2 unknown: %s: %s' % (match.group('label'), lmatch.group('msg')))
+			    issues['unknown'].append({
+				    'why': '%s: %s' % (match.group('label'), lmatch.group('msg')),
+				    'port1': port1,
+				    'port2': port2
+				})
 
 def parse_ibdiagnet_csv ( ports, fcsv ):
     """ Parse the output of ibdiagnet ibdiagnet2.db_csv
