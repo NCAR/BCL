@@ -586,7 +586,7 @@ def resolve_port(ports, port):
 		return pport
 	vlog(5, 'unable to resolve port: GUID={0} PortNum={1}'.format(port['guid'], port['port']))
 
-    #match by port label
+    #match by port label (flawed match if port names are not unique)
     if 'name' in port and port['name'] and port['port'] and port['name'] != "localhost":
  	for pport in ports:
 	    if port['name'] == pport['name'] and int(port['port']) == int(pport['port']):
