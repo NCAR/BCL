@@ -39,14 +39,15 @@ def unlock():
              
 
 
-def initialize_state():
+def initialize_db():
     """ Initialize DATABASE state variable 
     Attempts to load Yaml file but will default to clean state table
     """
     global BAD_CABLE_DB, SQL_CONNECTION, SQL
 
     try:
-	SQL_CONNECTION = sqlite3.connect(BAD_CABLE_DB)
+	SQL_CONNECTION = sqlite3.connect(BAD_CABLE_DB, isolation_level=None)
+	SQL_CONNECTION .row_factory = sqlite3.Row
 	SQL = SQL_CONNECTION.cursor()
     except Exception as err:
 	vlog(1, 'Unable to Open DB: {0}'.format(err))
@@ -54,39 +55,62 @@ def initialize_state():
 
     lock()
     #SQL.execute('SELECT name FROM sqlite_master WHERE type=? AND name=?', ('table', 'table_name')); 
+
+    #SQL.execute('''                                               
+    #SELECT name FROM sqlite_master                                
+    #  WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' 
+    #  UNION ALL                                                   
+    #  SELECT name FROM sqlite_temp_master                         
+    #    WHERE type IN ('table','view')                            
+    #    ORDER BY 1;                                               
+    #''')                                                          
+    #print SQL.fetchall()                                          
+
     #print SQL.fetchall()
     SQL.executescript("""
 	PRAGMA foreign_keys = ON;
+	BEGIN;
 
 	CREATE TABLE IF NOT EXISTS problems (
 	    pid INTEGER PRIMARY KEY,
 	    state TEXT,
-	    comment BLOB,
+	    comment BLOB
 	);
 
  	create table if not exists cables (
-	    cid integer primary key,
-	    state text,
-	    comment blob
+	    cid INTEGER PRIMARY KEY AUTOINCREMENT,
+	    state TEXT,
+	    mtime INTEGER,
+	    length text,
+	    --Serial Number
+	    SN text,
+	    --Product Number
+	    PN text 
 	);
 
-  	create table if not exists cable_port (
-	    cpid integer primary key,
+  	create table if not exists cable_ports (
+	    cpid INTEGER PRIMARY KEY AUTOINCREMENT, 
 	    cid integer,
+	    --Physical Label
 	    plabel text,
+	    --Firmware Label
 	    flabel text,
-	    guid integer,
-	    length text,
-	    SN text,
-	    PN text,
+	    guid text,
+	    --PortNum 
+	    port integer,
 	    FOREIGN KEY (cid) REFERENCES cables(cid)
 	);
 
   	create table if not exists issues (
 	    iid integer primary key,
 	    mtime integer,
+	    -- Parsed error type
+	    type text,
 	    issue blob,
-	    raw blob
+	    --Raw error message
+	    raw blob,
+	    --Where error was generated
+	    source blob
 	);
 
  	CREATE TABLE IF NOT EXISTS problem_cables (
@@ -123,23 +147,144 @@ def initialize_state():
 	    FOREIGN KEY (cid) REFERENCES cables(cid)
 	);
 
+	COMMIT;
     """)
 	    
     unlock()
 
-def release_state():
-    """ Releases Database lock and saves """
+def release_db():
+    """ Releases Database """
+    global BAD_CABLE_DB, SQL_CONNECTION, SQL
 
-    global BAD_CABLE_DB, LOCK
-
-    if LOCK:
-	LOCK.close()
-	LOCK = None
-	vlog(5, 'released lock')
+    SQL.close()
+    SQL_CONNECTION.close()
+    vlog(5, 'released db')
 
 
-def find_cable(port1, port2, create = True):
-    """ Find (and update) cable in state['cables'] """
+def find_cable(port1, port2, create = True, defer_commit = False):
+    """ Find (and update) cable in db """
+    global SQL
+
+    def gv(port, key):
+	""" get value or none """
+	return None if not key in port else port[key]
+
+    if not port1 and port2:
+	port1 = port2
+	port2 = None
+
+    if port2 and int(port1['guid'], 16) > int(port2['guid'], 16):
+	#always order the ports by largest gid as port 2
+	#order doesnt matter as long as it is stable
+	port_tmp = port2
+	port2 = port1
+	port1 = port_tmp
+
+    if not port1:
+	return None
+ 
+
+    if not defer_commit: 
+	SQL.execute('BEGIN;')
+
+    SQL.execute('''
+	SELECT 
+	    cables.cid,
+	    cp1.cpid,
+	    cp2.cpid
+	from 
+	    cables
+
+	INNER JOIN
+	    cable_ports as cp1
+	ON
+	    cables.cid = cp1.cid and
+	    cp1.guid = ? and
+	    cp1.port = ?
+
+	LEFT OUTER JOIN
+	    cable_ports as cp2
+	ON
+	    ? IS NOT NULL and
+	    cables.cid = cp2.cid and
+	    cp2.guid = ? and
+	    cp2.port = ?    
+
+	ORDER BY
+	    cables.mtime DESC
+
+	LIMIT 1
+    ''',(
+	str(int(port1['guid'], 16)), 
+	int(port1['port']),
+	'1' if port2 else None,
+	str(int(port2['guid'], 16)) if port2 else None,
+	int(port2['port']) if port2 else None,
+    ))
+
+    for row in SQL.fetchall():
+	print 'found cid={0} p1={1} p2={2}'.format(row[0], row[1], row[2])
+
+ 
+# for cid,cable in STATE['cables'].iteritems():
+#	if int(cable['port1']['guid'],16) == int(port1['guid'],16) and int(cable['port1']['port']) == int(port1['port']):
+#	    return update_ports(cid, port1, port2)
+#	if port2 and int(cable['port1']['guid'],16) == int(port2['guid'],16) and int(cable['port1']['port']) == int(port2['port']):
+#	    return update_ports(cid, port1, port2) 
+ 
+
+#:    for port in [port1, port2]:
+#:	if port:
+#:	    SQL.execute('''
+#:		SELECT cpid, cid 
+#:		from cable_port 
+#:		WHERE 
+#:		    guid = ? and port = ?
+#:	    ''',(str(int(port['guid'], 16)), int(port['port'])))
+#:
+#:	    for row in SQL.fetchall():
+#:		print row
+#:
+    SQL.execute('''
+	INSERT INTO 
+	cables 
+	(
+	    state,
+	    mtime
+	) VALUES (
+	    ?, ?
+	);''', ('new', time.time()));
+    cid = SQL.lastrowid
+
+    for port in [port1, port2]:
+	if port:
+	    SQL.execute('''
+		INSERT INTO cable_ports (
+		    cid,
+		    guid,
+		    port,
+		    plabel,
+		    flabel
+		) VALUES (
+		    ?, ?, ?, ?, ? 
+		);
+	    ''', (
+		cid,
+		str(int(port['guid'], 16)),
+		int(port['port']),
+		#gv(port,'LengthDesc'),
+		#gv(port,'SN'),
+		#gv(port,'PN'),
+		ib_diagnostics.port_pretty(port),
+		ib_diagnostics.port_pretty(port), 
+	    ))
+	    cpid = SQL.lastrowid
+
+
+    if not defer_commit: 
+	SQL.execute('COMMIT;')
+
+    return None
 
     def setup_port(cable_port, port):
 	""" add port into to a cable port (just the minimal for later) """
@@ -181,26 +326,8 @@ def find_cable(port1, port2, create = True):
 
 	return cid
 
-    if not port1 and port2:
-	port1 = port2
-	port2 = None
 
-    if port2 and int(port1['guid'], 16) > int(port2['guid'], 16):
-	#always order the ports by largest gid as port 2
-	#order doesnt matter as long as it is stable
-	port_tmp = port2
-	port2 = port1
-	port1 = port_tmp
-
-    if not port1:
-	return None
-
-    for cid,cable in STATE['cables'].iteritems():
-	if int(cable['port1']['guid'],16) == int(port1['guid'],16) and int(cable['port1']['port']) == int(port1['port']):
-	    return update_ports(cid, port1, port2)
-	if port2 and int(cable['port1']['guid'],16) == int(port2['guid'],16) and int(cable['port1']['port']) == int(port2['port']):
-	    return update_ports(cid, port1, port2) 
-             	    
+            	    
     if create:
 	#cable ids must be unique for life
 	cid = STATE['next_cable']
@@ -426,7 +553,7 @@ def run_parse(dump_dir):
     global EV, STATE
 
     ports = []
-    issues = {'link': [], 'missing': [], 'unexpected': [], 'unknown': [], 'label': [], 'speed': [], 'disabled': [], 'width': [], 'counters': [] }
+    issues = []
 
     with open('%s/%s' % (dump_dir,'ibnetdiscover.log') , 'r') as fds:
         ib_diagnostics.parse_ibnetdiscover_cables(ports, fds.read()) 
@@ -444,6 +571,26 @@ def run_parse(dump_dir):
 
     ibsp = cluster_info.get_ib_speed()
     ib_diagnostics.find_underperforming_cables ( ports, issues, ibsp['speed'], ibsp['width'])
+
+    pp = pprint.PrettyPrinter(indent=4)
+    #pp.pprint(issues)
+
+    lock()
+    SQL.execute('BEGIN;')
+
+    #add every known cable to database (slow but keeps sane list of all cables forever)
+    for port in ports:
+        find_cable(port, port['connection'], True, True)
+        find_cable(port, port['connection'], True, True)
+
+    SQL.execute('COMMIT;')
+    unlock()
+
+    #SQL.execute('SELECT * FROM cables;')
+    #print SQL.fetchall()
+    #SQL.execute('SELECT * FROM cable_ports;')
+    #print SQL.fetchall()                
+    return
 
     initialize_state()
 
@@ -572,46 +719,56 @@ LOCK = None
 
 EV = extraview_cli.open_extraview()
 
-initialize_state()
-
+initialize_db()
 
 vlog(5, argv)
 
-#if len(argv) < 2:
-#    dump_help() 
-#elif argv[1] == 'parse':
-#    run_parse(argv[2])  
+if len(argv) < 2:
+    dump_help() 
+elif argv[1] == 'parse':
+    run_parse(argv[2])  
+elif argv[1] == 'list':
+    list_state(argv[2])  
+#elif argv[1] == 'auto':
+#    run_auto() 
 #elif argv[1] == 'list':
-#    list_state(argv[2])  
-##elif argv[1] == 'auto':
-##    run_auto() 
-##elif argv[1] == 'list':
-##    NODES=NodeSet('') 
-##    list_state(NODES)
-##elif len(argv) == 3 and argv[2] == 'list':
-##    NODES=NodeSet(argv[1]) 
-##    list_state(NODES)
-##elif len(argv) == 4:
-##    NODES=NodeSet(argv[1]) 
-##    CMD=argv[2].lower()
-##
-##    if CMD == 'add':
-##	add_nodes(NODES, argv[3])
-##    elif CMD == 'release':
-##	del_nodes(NODES, argv[3]) 
-##    elif CMD == 'comment':
-##	comment_nodes(NODES, argv[3])
-##    elif CMD == 'attach':
-##	attach_nodes(NODES, argv[3].split(','))
-##    elif CMD == 'detach':
-##	detach_nodes(NODES, argv[3].split(','))
-##    elif CMD == 'hardware':
-##	mark_hardware(NODES, argv[3])
-##    elif CMD == 'casg':
-##	mark_casg(NODES, argv[3]) 
-##    else:
-##	dump_help() 
-#else:
-#    dump_help() 
+#    NODES=NodeSet('') 
+#    list_state(NODES)
+#elif len(argv) == 3 and argv[2] == 'list':
+#    NODES=NodeSet(argv[1]) 
+#    list_state(NODES)
+#elif len(argv) == 4:
+#    NODES=NodeSet(argv[1]) 
+#    CMD=argv[2].lower()
 #
-#
+#    if CMD == 'add':
+#	add_nodes(NODES, argv[3])
+#    elif CMD == 'release':
+#	del_nodes(NODES, argv[3]) 
+#    elif CMD == 'comment':
+#	comment_nodes(NODES, argv[3])
+#    elif CMD == 'attach':
+#	attach_nodes(NODES, argv[3].split(','))
+#    elif CMD == 'detach':
+#	detach_nodes(NODES, argv[3].split(','))
+#    elif CMD == 'hardware':
+#	mark_hardware(NODES, argv[3])
+#    elif CMD == 'casg':
+#	mark_casg(NODES, argv[3]) 
+#    else:
+#	dump_help() 
+else:
+    dump_help() 
+
+
+
+
+
+
+
+
+
+
+
+release_db()
+
