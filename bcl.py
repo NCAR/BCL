@@ -16,62 +16,127 @@ import ib_diagnostics
 import pprint
 import time
 import datetime
+import sqlite3
 
-def initialize_state():
-    """ Initialize DATABASE state variable 
-    Attempts to load Yaml file but will default to clean state table
-    """
-    global BAD_CABLE_DB, STATE, LOCK
+def lock():
+    """ Get lock for changes """
+    global LOCK
 
     if not LOCK:
 	LOCK = file_locking.try_lock('/var/run/ncar_bcl', tries=10)
 	if not LOCK:
 	    die_now("unable to obtain lock. please try again later.")
-     
+	vlog(5, 'lock obtained')
+
+def unlock():
+    """ release lock for changes """
+    global LOCK
+
+    if LOCK:
+	LOCK.close()
+	LOCK = None
+	vlog(5, 'released lock')
+             
+
+
+def initialize_state():
+    """ Initialize DATABASE state variable 
+    Attempts to load Yaml file but will default to clean state table
+    """
+    global BAD_CABLE_DB, SQL_CONNECTION, SQL
+
     try:
-	with open(BAD_CABLE_DB, 'r') as fds:
-	    STATE = yaml.load(fds)
+	SQL_CONNECTION = sqlite3.connect(BAD_CABLE_DB)
+	SQL = SQL_CONNECTION.cursor()
     except Exception as err:
 	vlog(1, 'Unable to Open DB: {0}'.format(err))
-	STATE = {}
 
-    if len(STATE) == 0:
-	vlog(2, 'Initializing new state database')
 
-	STATE = {
-		'cables':	{}, #dict of index->cable of all known cables
-		'next_cable':	1,  #index of next cable
-		'issues':	{}, #list of all issues
-		'next_issue':	1,  #index of next issue
-		'problems':	{}, #list of all problems
-		'next_problem':	1   #index of next problem
-	}
+    lock()
+    #SQL.execute('SELECT name FROM sqlite_master WHERE type=? AND name=?', ('table', 'table_name')); 
+    #print SQL.fetchall()
+    SQL.executescript("""
+	PRAGMA foreign_keys = ON;
+
+	CREATE TABLE IF NOT EXISTS problems (
+	    pid INTEGER PRIMARY KEY,
+	    state TEXT,
+	    comment BLOB,
+	);
+
+ 	create table if not exists cables (
+	    cid integer primary key,
+	    state text,
+	    comment blob
+	);
+
+  	create table if not exists cable_port (
+	    cpid integer primary key,
+	    cid integer,
+	    plabel text,
+	    flabel text,
+	    guid integer,
+	    length text,
+	    SN text,
+	    PN text,
+	    FOREIGN KEY (cid) REFERENCES cables(cid)
+	);
+
+  	create table if not exists issues (
+	    iid integer primary key,
+	    mtime integer,
+	    issue blob,
+	    raw blob
+	);
+
+ 	CREATE TABLE IF NOT EXISTS problem_cables (
+	    pid INTEGER,
+	    cid INTEGER,
+	    FOREIGN KEY (pid) REFERENCES problems(pid)
+	    FOREIGN KEY (cid) REFERENCES cables(cid)
+	);
+
+  	CREATE TABLE IF NOT EXISTS problem_sibling_cables (
+	    pid INTEGER,
+	    cid INTEGER,
+	    FOREIGN KEY (pid) REFERENCES problems(pid)
+	    FOREIGN KEY (cid) REFERENCES cables(cid)
+	);
+
+  	CREATE TABLE IF NOT EXISTS problem_issues (
+	    pid INTEGER,
+	    iid INTEGER,
+ 	    FOREIGN KEY (pid) REFERENCES problems(pid)
+	    FOREIGN KEY (iid) REFERENCES issues(iid) 
+	);                       
+
+   	CREATE TABLE IF NOT EXISTS problem_tickets (
+	    pid INTEGER,
+	    tid INTEGER,
+ 	    FOREIGN KEY (pid) REFERENCES problems(pid)
+	);   
+
+  	CREATE TABLE IF NOT EXISTS issue_cables (
+	    iid INTEGER,
+	    cid INTEGER,
+	    FOREIGN KEY (iid) REFERENCES issues(iid) 
+	    FOREIGN KEY (cid) REFERENCES cables(cid)
+	);
+
+    """)
+	    
+    unlock()
 
 def release_state():
     """ Releases Database lock and saves """
 
-    global BAD_CABLE_DB, STATE, LOCK
-
-    save_state()
-
-    STATE = None
+    global BAD_CABLE_DB, LOCK
 
     if LOCK:
 	LOCK.close()
 	LOCK = None
 	vlog(5, 'released lock')
 
-
-def save_state():
-    """ Save state database to file """
-    global BAD_CABLE_DB, STATE, LOCK
-
-    if os.path.isfile(BAD_CABLE_DB):
-	os.rename(BAD_CABLE_DB, BAD_CABLE_DB_BACKUP)
-
-    #Save yaml database of STATE
-    with open(BAD_CABLE_DB, 'w') as fds:
-	yaml.dump(STATE, fds)
 
 def find_cable(port1, port2, create = True):
     """ Find (and update) cable in state['cables'] """
@@ -495,7 +560,7 @@ None  None  Suspect 4343 Unknown
 if not cluster_info.is_mgr():
     die_now("Only run this on the cluster manager")
 
-BAD_CABLE_DB='/etc/ncar_bad_cable_list.yaml'
+BAD_CABLE_DB='/etc/ncar_bad_cable_list.sqlite'
 BAD_CABLE_DB_BACKUP='/etc/ncar_bad_cable_list.backup.yaml'
 """ const string: Path to JSON database for bad cable list """
 
@@ -507,44 +572,46 @@ LOCK = None
 
 EV = extraview_cli.open_extraview()
 
+initialize_state()
+
 
 vlog(5, argv)
 
-if len(argv) < 2:
-    dump_help() 
-elif argv[1] == 'parse':
-    run_parse(argv[2])  
-elif argv[1] == 'list':
-    list_state(argv[2])  
-#elif argv[1] == 'auto':
-#    run_auto() 
+#if len(argv) < 2:
+#    dump_help() 
+#elif argv[1] == 'parse':
+#    run_parse(argv[2])  
 #elif argv[1] == 'list':
-#    NODES=NodeSet('') 
-#    list_state(NODES)
-#elif len(argv) == 3 and argv[2] == 'list':
-#    NODES=NodeSet(argv[1]) 
-#    list_state(NODES)
-#elif len(argv) == 4:
-#    NODES=NodeSet(argv[1]) 
-#    CMD=argv[2].lower()
+#    list_state(argv[2])  
+##elif argv[1] == 'auto':
+##    run_auto() 
+##elif argv[1] == 'list':
+##    NODES=NodeSet('') 
+##    list_state(NODES)
+##elif len(argv) == 3 and argv[2] == 'list':
+##    NODES=NodeSet(argv[1]) 
+##    list_state(NODES)
+##elif len(argv) == 4:
+##    NODES=NodeSet(argv[1]) 
+##    CMD=argv[2].lower()
+##
+##    if CMD == 'add':
+##	add_nodes(NODES, argv[3])
+##    elif CMD == 'release':
+##	del_nodes(NODES, argv[3]) 
+##    elif CMD == 'comment':
+##	comment_nodes(NODES, argv[3])
+##    elif CMD == 'attach':
+##	attach_nodes(NODES, argv[3].split(','))
+##    elif CMD == 'detach':
+##	detach_nodes(NODES, argv[3].split(','))
+##    elif CMD == 'hardware':
+##	mark_hardware(NODES, argv[3])
+##    elif CMD == 'casg':
+##	mark_casg(NODES, argv[3]) 
+##    else:
+##	dump_help() 
+#else:
+#    dump_help() 
 #
-#    if CMD == 'add':
-#	add_nodes(NODES, argv[3])
-#    elif CMD == 'release':
-#	del_nodes(NODES, argv[3]) 
-#    elif CMD == 'comment':
-#	comment_nodes(NODES, argv[3])
-#    elif CMD == 'attach':
-#	attach_nodes(NODES, argv[3].split(','))
-#    elif CMD == 'detach':
-#	detach_nodes(NODES, argv[3].split(','))
-#    elif CMD == 'hardware':
-#	mark_hardware(NODES, argv[3])
-#    elif CMD == 'casg':
-#	mark_casg(NODES, argv[3]) 
-#    else:
-#	dump_help() 
-else:
-    dump_help() 
-
-
+#
