@@ -382,9 +382,10 @@ def run_parse(dump_dir):
 
     initialize_state()
 
-    #add every known cable to database (slow but keeps sane list of all cables ever)
-    for port in ports:
-	find_cable(port, port['connection'], True)
+    #TOO SLOW
+    ##add every known cable to database (slow but keeps sane list of all cables ever)
+    #for port in ports:
+    #    find_cable(port, port['connection'], True)
 
     #walk every issue type and add them
 
@@ -427,9 +428,19 @@ def dump_help():
     help: {0}
 	Print this help message
  
-    list: {0} list
-	dump list of all cables in bad cable list
+    list: 
+	{0} list action
+	    dump list of problems,cables,issues
 	   
+	{0} list issues
+	    dump list of issues
+
+ 	{0} list problems
+	    dump list of problems
+ 
+ 	{0} list cables
+	    dump list of cables
+
     add: {0} {{node range}} {{add}} {{comment}}
 	add node to bad node list 
 	open EV against node in SSG queue
