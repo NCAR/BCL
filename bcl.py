@@ -189,24 +189,10 @@ def find_cable(port1, port2, create = True, defer_commit = False):
     if not defer_commit: 
 	SQL.execute('BEGIN;')
 
+    #Attempt to find the cable by guid/port/SN
     SQL.execute('''
 	SELECT 
-	    cables.cid as cid,
-	    cables.state as state,
-	    cables.ctime as ctime,
-	    cables.length as length,
-	    cables.SN as SN,
-	    cables.PN as PN,
-	    cp1.cpid as p1,
-	    cp1.guid as p1_guid,
-	    cp1.port as p1_port,
-	    cp1.plabel as p1_plabel,
-	    cp1.plabel as p1_flabel,
- 	    cp2.cpid as p2,
-	    cp2.guid as p2_guid,
-	    cp2.port as p2_port,
-	    cp2.plabel as p2_plabel,
-	    cp2.plabel as p2_flabel
+	    cables.cid as cid
 	from 
 	    cables
 
@@ -225,11 +211,6 @@ def find_cable(port1, port2, create = True, defer_commit = False):
 	    cables.cid = cp2.cid and
 	    cp2.guid = ? and
 	    cp2.port = ?    
-
-	--Only query the latest cable
-	ORDER BY
-	    cables.ctime DESC
-	LIMIT 1
     ''',(
 	gv(port1, 'SN'), gv(port1, 'SN'),
 	str(int(port1['guid'], 16)), 
@@ -241,30 +222,12 @@ def find_cable(port1, port2, create = True, defer_commit = False):
 
     rows = SQL.fetchall()
     if len(rows) > 0:
-	row = rows[0]
+	#exact cable found
+	return rows[0]['cid']
+    elif not create:
+	return None
 
-	
-	print dict(row)
- 
-# for cid,cable in STATE['cables'].iteritems():
-#	if int(cable['port1']['guid'],16) == int(port1['guid'],16) and int(cable['port1']['port']) == int(port1['port']):
-#	    return update_ports(cid, port1, port2)
-#	if port2 and int(cable['port1']['guid'],16) == int(port2['guid'],16) and int(cable['port1']['port']) == int(port2['port']):
-#	    return update_ports(cid, port1, port2) 
- 
-
-#:    for port in [port1, port2]:
-#:	if port:
-#:	    SQL.execute('''
-#:		SELECT cpid, cid 
-#:		from cable_port 
-#:		WHERE 
-#:		    guid = ? and port = ?
-#:	    ''',(str(int(port['guid'], 16)), int(port['port'])))
-#:
-#:	    for row in SQL.fetchall():
-#:		print row
-#:
+    #insert new cable into db
     SQL.execute('''
 	INSERT INTO 
 	cables 
@@ -285,6 +248,7 @@ def find_cable(port1, port2, create = True, defer_commit = False):
     ));
     cid = SQL.lastrowid
 
+    #insert the ports
     for port in [port1, port2]:
 	if port:
 	    SQL.execute('''
@@ -305,7 +269,6 @@ def find_cable(port1, port2, create = True, defer_commit = False):
 		ib_diagnostics.port_pretty(port), 
 	    ))
 	    cpid = SQL.lastrowid
-
 
     if not defer_commit: 
 	SQL.execute('COMMIT;')
@@ -607,7 +570,8 @@ def run_parse(dump_dir):
     #add every known cable to database (slow but keeps sane list of all cables forever)
     for port in ports:
         find_cable(port, port['connection'], True, True)
-        find_cable(port, port['connection'], True, True)
+
+	#find if this cable 
 
     SQL.execute('COMMIT;')
     unlock()
