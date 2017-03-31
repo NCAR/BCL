@@ -74,13 +74,15 @@ def initialize_db():
 	CREATE TABLE IF NOT EXISTS problems (
 	    pid INTEGER PRIMARY KEY,
 	    state TEXT,
-	    comment BLOB
+	    comment BLOB,
+	    --number of times this problem has re-occurred
+	    activations INTEGER
 	);
 
  	create table if not exists cables (
 	    cid INTEGER PRIMARY KEY AUTOINCREMENT,
 	    state TEXT,
-	    mtime INTEGER,
+	    ctime INTEGER,
 	    length text,
 	    --Serial Number
 	    SN text,
@@ -189,15 +191,29 @@ def find_cable(port1, port2, create = True, defer_commit = False):
 
     SQL.execute('''
 	SELECT 
-	    cables.cid,
-	    cp1.cpid,
-	    cp2.cpid
+	    cables.cid as cid,
+	    cables.state as state,
+	    cables.ctime as ctime,
+	    cables.length as length,
+	    cables.SN as SN,
+	    cables.PN as PN,
+	    cp1.cpid as p1,
+	    cp1.guid as p1_guid,
+	    cp1.port as p1_port,
+	    cp1.plabel as p1_plabel,
+	    cp1.plabel as p1_flabel,
+ 	    cp2.cpid as p2,
+	    cp2.guid as p2_guid,
+	    cp2.port as p2_port,
+	    cp2.plabel as p2_plabel,
+	    cp2.plabel as p2_flabel
 	from 
 	    cables
 
 	INNER JOIN
 	    cable_ports as cp1
 	ON
+	    ( ? IS NULL or cables.SN = ? ) and
 	    cables.cid = cp1.cid and
 	    cp1.guid = ? and
 	    cp1.port = ?
@@ -210,11 +226,12 @@ def find_cable(port1, port2, create = True, defer_commit = False):
 	    cp2.guid = ? and
 	    cp2.port = ?    
 
+	--Only query the latest cable
 	ORDER BY
-	    cables.mtime DESC
-
+	    cables.ctime DESC
 	LIMIT 1
     ''',(
+	gv(port1, 'SN'), gv(port1, 'SN'),
 	str(int(port1['guid'], 16)), 
 	int(port1['port']),
 	'1' if port2 else None,
@@ -222,9 +239,12 @@ def find_cable(port1, port2, create = True, defer_commit = False):
 	int(port2['port']) if port2 else None,
     ))
 
-    for row in SQL.fetchall():
-	print 'found cid={0} p1={1} p2={2}'.format(row[0], row[1], row[2])
+    rows = SQL.fetchall()
+    if len(rows) > 0:
+	row = rows[0]
 
+	
+	print dict(row)
  
 # for cid,cable in STATE['cables'].iteritems():
 #	if int(cable['port1']['guid'],16) == int(port1['guid'],16) and int(cable['port1']['port']) == int(port1['port']):
@@ -250,10 +270,19 @@ def find_cable(port1, port2, create = True, defer_commit = False):
 	cables 
 	(
 	    state,
-	    mtime
+	    ctime,
+	    length,
+	    SN,
+	    PN
 	) VALUES (
-	    ?, ?
-	);''', ('new', time.time()));
+	    ?, ?, ?, ?, ?
+	);''', (
+	    'new', 
+	    time.time(),
+ 	    gv(port1,'LengthDesc'),
+	    gv(port1,'SN'),
+	    gv(port1,'PN'), 
+    ));
     cid = SQL.lastrowid
 
     for port in [port1, port2]:
@@ -272,9 +301,6 @@ def find_cable(port1, port2, create = True, defer_commit = False):
 		cid,
 		str(int(port['guid'], 16)),
 		int(port['port']),
-		#gv(port,'LengthDesc'),
-		#gv(port,'SN'),
-		#gv(port,'PN'),
 		ib_diagnostics.port_pretty(port),
 		ib_diagnostics.port_pretty(port), 
 	    ))
@@ -708,13 +734,8 @@ if not cluster_info.is_mgr():
     die_now("Only run this on the cluster manager")
 
 BAD_CABLE_DB='/etc/ncar_bad_cable_list.sqlite'
-BAD_CABLE_DB_BACKUP='/etc/ncar_bad_cable_list.backup.yaml'
 """ const string: Path to JSON database for bad cable list """
 
-STATE={}
-""" dictionary: state table of bad cable list
-    this is written to the bad cable DB on any changes
-"""
 LOCK = None
 
 EV = extraview_cli.open_extraview()
