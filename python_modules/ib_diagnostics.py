@@ -328,22 +328,31 @@ def find_underperforming_cables ( ports, issues, speed, width = "4x"):
     for port in ports:
 	if port['name'] == "localhost": #complain about localhost named ports but no need to complain
 	   vlog(5,'Localhost labeled port: %s <-> %s' % (port_pretty(port), 'N/A' if not port['connection'] else port_pretty(port['connection'])))
-	   issues['label'].append({ 
-	       'port': port,
-	       'label': port['name']
-	       })         
+	   issues.append({ 
+	       'type': 'label',
+	       'ports': [port],
+	       'issue': port['name'],
+	       'raw': None,
+	       'source': 'ibnetdiscover -p'
+	   })         
 
 	if port['connection']: #ignore unconnected ports
 	    if port['speed'] != speed:
-	       issues['speed'].append({ 
-		   'port': port,
-		   'speed': port['speed']
-		   })        
+	       issues.append({ 
+		   'type': 'speed',
+		   'ports': [port, port['connection']],
+		   'issue': 'Port Speed: %s' % port['speed'],
+		   'raw': None,
+		   'source': 'ibnetdiscover -p'
+	       })        
 	    if port['width'] != width:
- 	       issues['width'].append({ 
-		   'port': port,
-		   'width': port['width']
-		   })        
+ 	       issues.append({ 
+ 		   'type': 'width',
+		   'ports': [port, port['connection']],
+		   'issue': 'Port Width: %s' % port['width'],
+		   'raw': None,
+		   'source': 'ibnetdiscover -p'
+	       })        
 	else: #check if unconnected ports are disabled
 	    if 'PortPhyState' in port:
 		vlog(5, 'down port guid=%s port=%s physstate:%s state:%s' % (port['guid'], port['port'], port['PortPhyState'],port['PortState']))
@@ -353,9 +362,13 @@ def find_underperforming_cables ( ports, issues, speed, width = "4x"):
 		#PortState           
 		if int(port['PortPhyState']) == 3: #physical state is disabled
 		    vlog(4, 'disabled port found guid=%s port=%s physstate:%s state:%s' % (port['guid'], port['port'], port['PortPhyState'],port['PortState']))
-		    issues['disabled'].append({ 
-		       'port': port
-		   })        
+		    issues.append({ 
+			'type': 'disabled',
+			'ports': [port],
+			'issue': 'Port Physical State Disabled',
+			'raw': None,
+			'source': 'ibdiagnet2'
+		    })     
 	    else:
 		vlog(4, 'down port missing physstate %s' % (port))
 
@@ -422,20 +435,31 @@ def parse_sgi_ibcv2 ( ports, issues, contents ):
 	vlog(5, match.groups())
 	if match.group('error'):
 	    vlog(5, 'unknown error: %s' % match.group('error'))
-	    issues['unknown'].append(match.group('error'))
+            issues.append({ 
+		'type': 'unknown',
+		'ports': [],
+		'issue': 'Port Physical State Disabled',
+		'raw': None,
+		'source': 'ibdiagnet2'
+	    })        
 	elif match.group('missing1'): 
 	    vlog(5, 'missing cable: %s <--> %s' % (match.group('missing1'), match.group('missing2')))
-	    issues['missing'].append({
-		'port1': parse(match.group('missing1')),
-		'port2': parse(match.group('missing2'))
-		})
+            issues.append({ 
+		'type': 'missing',
+		'ports': [parse(match.group('missing1')), parse(match.group('missing2'))],
+		'issue': 'Missing cable',
+		'raw': match.string,
+		'source': 'sgi ibcv2'
+	    })   
 	elif match.group('found1'): 
 	    vlog(5, 'unexpected cable: %s <--> %s' % (match.group('found1'), match.group('found2')))
- 	    issues['unexpected'].append({
-		'port1': parse(match.group('found1')),
-		'port2': parse(match.group('found2'))
-		})
- 
+            issues.append({ 
+		'type': 'unexpected',
+		'ports': [parse(match.group('found1')),parse(match.group('found2'))],
+		'issue': 'Unexpected cable',
+		'raw': match.string,
+		'source': 'sgi ibcv2'
+	    })
 
 def parse_ibdiagnet ( ports, issues, contents ):
     """ Parse the output of ibdiagnet """
@@ -494,20 +518,24 @@ def parse_ibdiagnet ( ports, issues, contents ):
 		   cmatch = ibdiag_line_regex_port.match(lmatch.group('msg'))
 		   lnmatch = ibdiag_line_regex_link.match(lmatch.group('msg'))
 		   if cmatch:
-		       issues['counters'].append({ 
-			   'port': parse_resolve_port(ports, cmatch.group('port')),
-			   'counter': cmatch.group('counter'),
-			   'value': cmatch.group('value')
-			   })
+		       issues.append({ 
+		           'type': 'counters',
+		           'ports': [parse_resolve_port(ports, cmatch.group('port'))],
+		           'issue': 'Counter %s increased to %s' % (cmatch.group('counter'), cmatch.group('value')),
+		           'raw': cmatch.string,
+		           'source': 'ibdiagnet2.log'
+		       })    
 		   elif lnmatch:
  		       dport2 = None
 		       if lnmatch.group('port2'):
 			   dport2 = parse_resolve_port(ports, lnmatch.group('port2'))
-		       issues['link'].append({ 
-			   'port1': parse_resolve_port(ports, lnmatch.group('port')),
-			   'port2': dport2,
-			   'why': lnmatch.group('what')
-			   })
+		       issues.append({ 
+		           'type': 'link',
+		           'ports': [parse_resolve_port(ports, lnmatch.group('port')), dport2],
+		           'issue': lnmatch.group('what'),
+		           'raw': lnmatch.string,
+		           'source': 'ibdiagnet2.log'
+		       })
 		   else:
 		       if not str(lmatch.group('msg')) in [
 			        'Ports counters value Check finished with errors',
@@ -530,11 +558,14 @@ def parse_ibdiagnet ( ports, issues, contents ):
 					port2 = port
 
 			    vlog(4,'IBDiagnet2 unknown: %s: %s' % (match.group('label'), lmatch.group('msg')))
-			    issues['unknown'].append({
-				    'why': '%s: %s' % (match.group('label'), lmatch.group('msg')),
-				    'port1': port1,
-				    'port2': port2
-				})
+
+			    issues.append({ 
+				'type': 'unknown',
+				'ports': [port1, port2],
+				'issue': '%s: %s' % (match.group('label'), lmatch.group('msg')),  
+				'raw': lmatch.string,
+				'source': 'ibdiagnet2.log'
+			    }) 
 
 def parse_ibdiagnet_csv ( ports, fcsv ):
     """ Parse the output of ibdiagnet ibdiagnet2.db_csv
