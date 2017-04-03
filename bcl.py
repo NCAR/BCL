@@ -222,32 +222,23 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 	));
 
 	iid = SQL.lastrowid
-	vlog(3, 'created new issue %s type=%s issue=%s cid=%s' % (iid, issue_type, issue, cid))
+	vlog(3, 'created new issue i%s type=%s issue=%s cid=%s' % (iid, issue_type, issue, cid))
     else: #issue was found
 	#update mtime since we just got a new hit
 
         SQL.execute('''
-	    INSERT INTO 
-	    issues 
-	    (
-		type,
-		issue,
-		raw,
-		source,
-		mtime,
-		cid
-	    ) VALUES (
-		?, ?, ?, ?, ?, ?
-	    );''', (
-		issue_type,
-		issue,
-		raw,
-		source,
+	    UPDATE
+		issues 
+	    SET
+		mtime = ?
+	    WHERE
+		iid = ?
+	    ;''', (
 		timestamp,
-		cid
+		iid
 	));
 
-	vlog(4, 'updated new issue %s mtime' % (iid))
+	vlog(4, 'updated issue i%s mtime' % (iid))
 
 
     print iid
@@ -455,6 +446,41 @@ def list_state(what):
 		    row['name'],
 		    row['flabel'],
 		    row['plabel']
+		)
+
+    elif what == 'issues':
+        f='{0:<10}{1:<10}{2:<15}{3:<20}{4:<50}{5:<50}'
+ 	print f.format(
+		"issue_id",
+		"cable_id",
+		"mtime",
+		"source",
+		"issue",
+		"raw error"
+	    ) 
+
+ 	SQL.execute('''
+	    SELECT 
+		iid,
+		type,
+		issue,
+		raw,
+		source,
+		mtime,
+		cid 
+	    from 
+		issues 
+	    ORDER BY iid ASC
+	''')
+
+	for row in SQL.fetchall():
+	    print f.format(
+		    'i%s' % row['iid'],
+		    'c%s' % row['cid'],
+		    row['mtime'],
+		    row['source'],
+		    row['issue'],
+		    row['raw'].replace("\n", "\\n") if row['raw'] else None
 		)
  
     return 
