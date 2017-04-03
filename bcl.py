@@ -100,6 +100,8 @@ def initialize_db():
 	    guid text,
 	    --PortNum 
 	    port integer,
+	    --Name (usually hostname)
+	    name text,
 	    FOREIGN KEY (cid) REFERENCES cables(cid)
 	);
 
@@ -163,176 +165,7 @@ def release_db():
     vlog(5, 'released db')
 
 
-def find_cable(port1, port2, create = True, defer_commit = False):
-    """ Find (and update) cable in db """
-    global SQL
 
-    def gv(port, key):
-	""" get value or none """
-	return None if not key in port else port[key]
-
-    if not port1 and port2:
-	port1 = port2
-	port2 = None
-
-    if port2 and int(port1['guid'], 16) > int(port2['guid'], 16):
-	#always order the ports by largest gid as port 2
-	#order doesnt matter as long as it is stable
-	port_tmp = port2
-	port2 = port1
-	port1 = port_tmp
-
-    if not port1:
-	return None
- 
-
-    if not defer_commit: 
-	SQL.execute('BEGIN;')
-
-    #Attempt to find the cable by guid/port/SN
-    SQL.execute('''
-	SELECT 
-	    cables.cid as cid
-	from 
-	    cables
-
-	INNER JOIN
-	    cable_ports as cp1
-	ON
-	    ( ? IS NULL or cables.SN = ? ) and
-	    cables.cid = cp1.cid and
-	    cp1.guid = ? and
-	    cp1.port = ?
-
-	LEFT OUTER JOIN
-	    cable_ports as cp2
-	ON
-	    ? IS NOT NULL and
-	    cables.cid = cp2.cid and
-	    cp2.guid = ? and
-	    cp2.port = ?    
-    ''',(
-	gv(port1, 'SN'), gv(port1, 'SN'),
-	str(int(port1['guid'], 16)), 
-	int(port1['port']),
-	'1' if port2 else None,
-	str(int(port2['guid'], 16)) if port2 else None,
-	int(port2['port']) if port2 else None,
-    ))
-
-    rows = SQL.fetchall()
-    if len(rows) > 0:
-	#exact cable found
-	return rows[0]['cid']
-    elif not create:
-	return None
-
-    #insert new cable into db
-    SQL.execute('''
-	INSERT INTO 
-	cables 
-	(
-	    state,
-	    ctime,
-	    length,
-	    SN,
-	    PN
-	) VALUES (
-	    ?, ?, ?, ?, ?
-	);''', (
-	    'new', 
-	    time.time(),
- 	    gv(port1,'LengthDesc'),
-	    gv(port1,'SN'),
-	    gv(port1,'PN'), 
-    ));
-    cid = SQL.lastrowid
-
-    #insert the ports
-    for port in [port1, port2]:
-	if port:
-	    SQL.execute('''
-		INSERT INTO cable_ports (
-		    cid,
-		    guid,
-		    port,
-		    plabel,
-		    flabel
-		) VALUES (
-		    ?, ?, ?, ?, ? 
-		);
-	    ''', (
-		cid,
-		str(int(port['guid'], 16)),
-		int(port['port']),
-		ib_diagnostics.port_pretty(port),
-		ib_diagnostics.port_pretty(port), 
-	    ))
-	    cpid = SQL.lastrowid
-
-    if not defer_commit: 
-	SQL.execute('COMMIT;')
-
-    return None
-
-    def setup_port(cable_port, port):
-	""" add port into to a cable port (just the minimal for later) """
-
-	def assign_check_port_key(old_port, new_port, key):
-	    """ assign new_port key value and check if it changes and log """
-	    if key in new_port:
-		if not key in old_port or old_port[key] != new_port[key]:
-		    if key in old_port:
-			vlog(3, 'port %s key %s value changed from %s to %s' % (ib_diagnostics.port_pretty(port), key,old_port[key], new_port[key]))
-		    old_port[key] = new_port[key]
-	    else:
-		if key in old_port:
-		    vlog(4, 'port %s key %s value is None' % (ib_diagnostics.port_pretty(port), key))
-		else:
-		    old_port[key] = None
-
-	for key in ['guid','port','LengthDesc','SN','PN']:
-             assign_check_port_key(cable_port, port, key)
-
-	plabel = ib_diagnostics.port_pretty(port)
-	if not 'plabel' in cable_port or cable_port['plabel'] != plabel:
-	    if 'plabel' in cable_port:
-		vlog(3, 'port physical label change from %s to %s' % (cable_port['plabel'], plabel))
-	    cable_port['plabel'] = ib_diagnostics.port_pretty(port)
-
-    def update_ports(cid, port1, port2):
-	""" update the entries for ports """
-
-	if port1:
-	    if not cable['port1']:
-		cable['port1'] = {}
-	    setup_port(cable['port1'], port1)
-	    
-	if port2:
-	    if not cable['port2']:
-		cable['port2'] = {}
-	    setup_port(cable['port2'], port2)
-
-	return cid
-
-
-            	    
-    if create:
-	#cable ids must be unique for life
-	cid = STATE['next_cable']
-	STATE['next_cable'] += 1
-
-	vlog(5, 'create cable(%s) %s <--> %s' % (cid, ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2)))
-
-	cable = STATE['cables'][cid] = {
-		'port1': None,
-		'port2': None
-	}
-
-	return update_ports(cid, port1, port2) 
-    else:
-	vlog(5, 'unable to find cable %s <--> %s' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2)))
-	return None
 
 def add_issue(port1, port2, issue):
     """ Add issue to issues list """
@@ -539,10 +372,135 @@ def list_state(what):
 
 def run_parse(dump_dir):
     """ Run parse mode against a dump directory """
-    global EV, STATE
+    global EV, STATE, SQL
+
+    def gv(port, key):
+	""" get value or none """
+	return None if not key in port else port[key]
+
+    def find_cable(port1, port2):
+	""" Find (and update) cable in db 
+	port1: ib_diagnostics formatted port
+	port2: ib_diagnostics formatted port
+	"""
+
+	if not port1 and port2:
+	    port1 = port2
+	    port2 = None
+
+	if port2 and int(port1['guid'], 16) > int(port2['guid'], 16):
+	    #always order the ports by largest gid as port 2
+	    #order doesnt matter as long as it is stable
+	    port_tmp = port2
+	    port2 = port1
+	    port1 = port_tmp
+
+	if not port1:
+	    return None
+
+	#Attempt to find the newest cable by guid/port/SN
+	SQL.execute('''
+	    SELECT 
+		cables.cid as cid
+	    from 
+		cables
+
+	    INNER JOIN
+		cable_ports as cp1
+	    ON
+		( ? IS NULL or cables.SN = ? ) and
+		cables.cid = cp1.cid and
+		cp1.guid = ? and
+		cp1.port = ?
+
+	    LEFT OUTER JOIN
+		cable_ports as cp2
+	    ON
+		? IS NOT NULL and
+		cables.cid = cp2.cid and
+		cp2.guid = ? and
+		cp2.port = ?    
+
+	    ORDER BY cables.ctime DESC
+	    LIMIT 1
+	''',(
+	    gv(port1, 'SN'), gv(port1, 'SN'),
+	    str(int(port1['guid'], 16)), #cleanup guid to make sure they are uniform
+	    int(port1['port']),
+	    '1' if port2 else None,
+	    str(int(port2['guid'], 16)) if port2 else None, 
+	    int(port2['port']) if port2 else None,
+	))
+
+	rows = SQL.fetchall()
+	if len(rows) > 0:
+	    #exact cable found
+	    return rows[0]['cid']
+	else:
+	    return None
+
+    def insert_cable(port1, port2, timestamp):
+	""" insert new cable into db """
+
+	SQL.execute('''
+	    INSERT INTO 
+	    cables 
+	    (
+		state,
+		ctime,
+		length,
+		SN,
+		PN
+	    ) VALUES (
+		?, ?, ?, ?, ?
+	    );''', (
+		'new', 
+		timestamp,
+		gv(port1,'LengthDesc'),
+		gv(port1,'SN'),
+		gv(port1,'PN'), 
+	));
+	cid = SQL.lastrowid
+
+	#insert the ports
+	for port in [port1, port2]:
+	    if port:
+		SQL.execute('''
+		    INSERT INTO cable_ports (
+			cid,
+			guid,
+			name,
+			port,
+			plabel,
+			flabel
+		    ) VALUES (
+			?, ?, ?, ?, ?, ?
+		    );
+		''', (
+		    cid,
+		    str(int(port['guid'], 16)),
+		    port['name'],
+		    int(port['port']),
+		    ib_diagnostics.port_pretty(port),
+		    ib_diagnostics.port_pretty(port), 
+		))
+		cpid = SQL.lastrowid
+
+	vlog(5, 'create cable(%s) %s <--> %s' % (cid, ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2)))
+	return cid
 
     ports = []
     issues = []
+    timestamp = time.time()
+
+    with open('%s/%s' % (dump_dir,'timestamp.txt') , 'r') as fds:
+	for line in fds:
+	    try:
+		timestamp = int(line.strip())
+	    except:
+		pass
+
+    vlog(5, 'parse dir timestamp: %s = %s' % (timestamp, datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')))
 
     with open('%s/%s' % (dump_dir,'ibnetdiscover.log') , 'r') as fds:
         ib_diagnostics.parse_ibnetdiscover_cables(ports, fds.read()) 
@@ -567,9 +525,15 @@ def run_parse(dump_dir):
     lock()
     SQL.execute('BEGIN;')
 
-    #add every known cable to database (slow but keeps sane list of all cables forever)
+    #add every known cable to database
+    #slow but keeps sane list of all cables forever for issue tracking
     for port in ports:
-        find_cable(port, port['connection'], True, True)
+	port1 = port
+	port2 = port['connection']
+        cid = find_cable(port1, port2)
+
+	if not cid:
+	    cid = insert_cable(port1, port2, timestamp)
 
 	#find if this cable 
 
