@@ -286,6 +286,96 @@ def add_problem(comment, issue_id = None, new_state = None):
 def list_state(what):
     """ dump state to user """
 
+    if what == 'cables':
+        f='{0:<10}{1:<15}{2:<7}{3:<15}{4:<17}{5:<50}{6:<50}'
+ 	print f.format(
+		"cable_id",
+		"ctime",
+		"length",
+		"Serial_Number",
+		"Product_Number",
+		"Firmware Label",
+		"Physical Label"
+	    ) 
+
+ 	SQL.execute('''
+	    SELECT 
+		cables.cid as cid,
+		cables.ctime as ctime,
+		cables.length as length,
+		cables.SN as SN,
+		cables.PN as PN,
+		cp1.flabel as cp1_flabel,
+		cp1.plabel as cp1_plabel,
+		cp2.flabel as cp2_flabel,
+		cp2.plabel as cp2_plabel
+	    from 
+		cables
+
+	    INNER JOIN
+		cable_ports as cp1
+	    ON
+		cables.cid = cp1.cid
+
+	    LEFT OUTER JOIN
+		cable_ports as cp2
+	    ON
+		cables.cid = cp2.cid and
+		cp2.cpid != cp1.cpid
+
+	    GROUP BY cables.cid
+	''')
+
+	for row in SQL.fetchall():
+	    print f.format(
+		    'c%s' % (row['cid']),
+		    row['ctime'],
+		    row['length'],
+		    row['SN'],
+		    row['PN'],
+		    '%s <--> %s' % (row['cp1_flabel'], row['cp2_flabel']),
+		    '%s <--> %s' % (row['cp1_plabel'], row['cp2_plabel'])
+		)
+
+    elif what == 'ports':
+        f='{0:<10}{1:<10}{2:<25}{3:<7}{4:<50}{5:<50}{6:<50}'
+ 	print f.format(
+		"cable_id",
+		"port_id",
+		"guid",
+		"port",
+		"name",
+		"Firmware Label",
+		"Physical Label"
+	    ) 
+
+ 	SQL.execute('''
+	    SELECT 
+		cid,
+		cpid,
+		plabel,
+		flabel,
+		guid,
+		port,
+		name
+	    from 
+		cable_ports 
+	    ORDER BY cpid ASC
+	''')
+
+	for row in SQL.fetchall():
+	    print f.format(
+		    'c%s' % row['cid'],
+		    'p%s' % row['cpid'],
+		    hex(int(row['guid'])),
+		    row['port'],
+		    row['name'],
+		    row['flabel'],
+		    row['plabel']
+		)
+ 
+    return 
+
     initialize_state()
 
     if what == 'problems':
