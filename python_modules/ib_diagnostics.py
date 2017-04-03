@@ -448,7 +448,7 @@ def parse_sgi_ibcv2 ( ports, issues, contents ):
 		'type': 'missing',
 		'ports': [parse(match.group('missing1')), parse(match.group('missing2'))],
 		'issue': 'Missing cable',
-		'raw': match.string,
+		'raw': match.group(1),
 		'source': 'sgi ibcv2'
 	    })   
 	elif match.group('found1'): 
@@ -457,7 +457,7 @@ def parse_sgi_ibcv2 ( ports, issues, contents ):
 		'type': 'unexpected',
 		'ports': [parse(match.group('found1')),parse(match.group('found2'))],
 		'issue': 'Unexpected cable',
-		'raw': match.string,
+		'raw': match.group(1),
 		'source': 'sgi ibcv2'
 	    })
 
