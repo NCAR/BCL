@@ -105,8 +105,11 @@ def initialize_db():
 	    FOREIGN KEY (cid) REFERENCES cables(cid)
 	);
 
+	CREATE INDEX IF NOT EXISTS cable_ports_guid_index on cable_ports  (guid, port);
+
   	create table if not exists issues (
-	    iid integer primary key,
+	    iid INTEGER PRIMARY KEY AUTOINCREMENT,
+	    -- last time issue was generated
 	    mtime integer,
 	    -- Parsed error type
 	    type text,
@@ -114,7 +117,10 @@ def initialize_db():
 	    --Raw error message
 	    raw blob,
 	    --Where error was generated
-	    source blob
+	    source blob,
+	    --cable source of issue (may be null)
+	    cid INTEGER,
+	    FOREIGN KEY (cid) REFERENCES cables(cid)
 	);
 
  	CREATE TABLE IF NOT EXISTS problem_cables (
@@ -144,13 +150,6 @@ def initialize_db():
  	    FOREIGN KEY (pid) REFERENCES problems(pid)
 	);   
 
-  	CREATE TABLE IF NOT EXISTS issue_cables (
-	    iid INTEGER,
-	    cid INTEGER,
-	    FOREIGN KEY (iid) REFERENCES issues(iid) 
-	    FOREIGN KEY (cid) REFERENCES cables(cid)
-	);
-
 	COMMIT;
     """)
 	    
@@ -164,14 +163,98 @@ def release_db():
     SQL_CONNECTION.close()
     vlog(5, 'released db')
 
-
-
-
-def add_issue(port1, port2, issue):
+def add_issue(issue_type, cid, issue, raw, source, timestamp):
     """ Add issue to issues list """
     global EV, STATE
 
-    vlog(3, 'add_issue(%s, %s, %s)' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2), issue))
+    #vlog(3, 'add_issue(%s, %s, %s)' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2), issue))
+
+    iid = None
+
+    #find if this exact issue already exists
+    SQL.execute('''
+	SELECT 
+	    iid
+	FROM 
+	    issues
+	WHERE
+	    type = ? and
+	    issue = ? and
+	    raw = ? and
+	    source = ? and
+	    cid = ?
+	LIMIT 1
+    ''',(
+	issue_type,
+	issue,
+	raw,
+	source,
+	cid       
+    ))
+
+    #only care about last time this issue was seen	
+    #in theory, there should never be more than 1
+    #since a new issue would have a new cable
+    for row in SQL.fetchall():
+	iid = row['iid']
+	break
+
+    if not iid:
+ 	SQL.execute('''
+	    INSERT INTO 
+	    issues 
+	    (
+		type,
+		issue,
+		raw,
+		source,
+		mtime,
+		cid
+	    ) VALUES (
+		?, ?, ?, ?, ?, ?
+	    );''', (
+		issue_type,
+		issue,
+		raw,
+		source,
+		timestamp,
+		cid
+	));
+
+	iid = SQL.lastrowid
+	vlog(3, 'created new issue %s type=%s issue=%s cid=%s' % (iid, issue_type, issue, cid))
+    else: #issue was found
+	#update mtime since we just got a new hit
+
+        SQL.execute('''
+	    INSERT INTO 
+	    issues 
+	    (
+		type,
+		issue,
+		raw,
+		source,
+		mtime,
+		cid
+	    ) VALUES (
+		?, ?, ?, ?, ?, ?
+	    );''', (
+		issue_type,
+		issue,
+		raw,
+		source,
+		timestamp,
+		cid
+	));
+
+	vlog(4, 'updated new issue %s mtime' % (iid))
+
+
+    print iid
+ 
+
+
+    return
 
     cissue = None
     cid = None
@@ -460,6 +543,11 @@ def list_state(what):
  
     release_state()
 
+def convert_guid_intstr(guid):
+    """ normalise representation of guid to string of an integer 
+	since sqlite cant handle 64bit ints """
+    return str(int(guid, 16))
+
 def run_parse(dump_dir):
     """ Run parse mode against a dump directory """
     global EV, STATE, SQL
@@ -515,10 +603,10 @@ def run_parse(dump_dir):
 	    LIMIT 1
 	''',(
 	    gv(port1, 'SN'), gv(port1, 'SN'),
-	    str(int(port1['guid'], 16)), #cleanup guid to make sure they are uniform
+	    convert_guid_intstr(port1['guid']),
 	    int(port1['port']),
 	    '1' if port2 else None,
-	    str(int(port2['guid'], 16)) if port2 else None, 
+	    convert_guid_intstr(port2['guid']) if port2 else None, 
 	    int(port2['port']) if port2 else None,
 	))
 
@@ -568,7 +656,7 @@ def run_parse(dump_dir):
 		    );
 		''', (
 		    cid,
-		    str(int(port['guid'], 16)),
+		    convert_guid_intstr(port['guid']),
 		    port['name'],
 		    int(port['port']),
 		    ib_diagnostics.port_pretty(port),
@@ -579,8 +667,11 @@ def run_parse(dump_dir):
 	vlog(5, 'create cable(%s) %s <--> %s' % (cid, ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2)))
 	return cid
 
+    #ports from ib_diagnostics should not leave this function
     ports = []
+    #dict to hold the issues found
     issues = []
+    #timestamp to apply to the cables and issues 
     timestamp = time.time()
 
     with open('%s/%s' % (dump_dir,'timestamp.txt') , 'r') as fds:
@@ -609,9 +700,6 @@ def run_parse(dump_dir):
     ibsp = cluster_info.get_ib_speed()
     ib_diagnostics.find_underperforming_cables ( ports, issues, ibsp['speed'], ibsp['width'])
 
-    pp = pprint.PrettyPrinter(indent=4)
-    #pp.pprint(issues)
-
     lock()
     SQL.execute('BEGIN;')
 
@@ -623,60 +711,70 @@ def run_parse(dump_dir):
         cid = find_cable(port1, port2)
 
 	if not cid:
+	    #create the cable
 	    cid = insert_cable(port1, port2, timestamp)
 
-	#find if this cable 
+	    #find if this cable already existed but with a different field (SN or PN)
+	    if gv(port, 'SN') and gv(port, 'PN'):
+		SQL.execute('''
+		    SELECT 
+			cables.cid as cid,
+			cables.SN as SN,
+			cables.PN as PN,
+			cables.ctime as ctime
+
+		    from 
+			cables
+
+		    WHERE
+			cables.cid != ? and
+			cables.SN = ? and
+			cables.PN = ?
+
+		    ORDER BY cables.ctime DESC
+		    LIMIT 1
+		''',(
+		    cid,
+		    gv(port1, 'SN'),
+		    gv(port1, 'PN')
+		))
+
+		for row in SQL.fetchall():
+		    #TODO: update problem that cable changed
+		    vlog(2,'detected cable SN/PN change c%s and c%s from %s/%s to %s/%s' % (
+			cid, 
+			row['cid'],
+			row['SN'],
+			row['PN'],
+			gv(port1, 'SN'),
+			gv(port1, 'PN') 
+		    ))
+
+	#record cid in each port to avoid relookup
+	port1['cable_id'] = cid
+	if port2:
+	    port2['cable_id'] = cid
+
+    for issue in issues:
+	cid = None
+
+	#set cable from port which was just resolved
+	if len(issue['ports']) and 'cable_id' in issue['ports'][0]:
+	    cid = issue['ports'][0]['cable_id']
+
+	#hand over cleaned up info for issues
+	add_issue(
+	    issue['type'],
+	    cid,
+	    issue['issue'],
+	    issue['raw'],
+	    issue['source'],
+	    timestamp
+	)
 
     SQL.execute('COMMIT;')
+
     unlock()
-
-    #SQL.execute('SELECT * FROM cables;')
-    #print SQL.fetchall()
-    #SQL.execute('SELECT * FROM cable_ports;')
-    #print SQL.fetchall()                
-    return
-
-    initialize_state()
-
-    #TOO SLOW
-    ##add every known cable to database (slow but keeps sane list of all cables ever)
-    #for port in ports:
-    #    find_cable(port, port['connection'], True)
-
-    #walk every issue type and add them
-
-    for issue in issues['missing']:
-	add_issue(issue['port1'], issue['port2'], 'Missing Cable')
-
-    for issue in issues['unexpected']:
-	add_issue(issue['port1'], issue['port2'], 'Unexpected Cable')
-  
-    for issue in issues['unknown']:
-	add_issue(issue['port1'], issue['port2'], issue['why'])
-
-    for issue in issues['label']:
-	add_issue(issue['port'], None, 'Invalid Port Label: %s ' % issue['label'])        
-
-    for issue in issues['counters']:
-	add_issue(issue['port'], None, 'Increase in Port Counter: %s=%s ' % (issue['counter'], issue['value']))        
-
-    for issue in issues['link']:
-	add_issue(issue['port1'], issue['port2'], 'Link Issue: %s ' % (issue['why']))        
- 
-    for issue in issues['speed']:
-	add_issue(issue['port'], None, 'Invalid Port Speed: %s ' % issue['speed'])        
-
-    for issue in issues['width']:
-	add_issue(issue['port'], None, 'Invalid Port Width: %s ' % issue['width'])        
- 
-    for issue in issues['disabled']:
-	add_issue(issue['port'], None, 'Port Physical Layer Disabled')        
-                                                                            
- 
-    pp = pprint.PrettyPrinter(indent=4)
-    pp.pprint(STATE)
- 
-    release_state()
 
 def dump_help():
     die_now("""NCAR Bad Cable List Multitool
