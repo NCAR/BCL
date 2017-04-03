@@ -101,6 +101,10 @@ def is_pbs_job_excl(states):
 	    return True
 
     return False
- 
+
+def is_pbs_node_busy(node):
+    """ Check if node can be considered to have a job """
+    return 'ncpus' in node['resources_assigned'] and node['resources_assigned']['ncpus'] > 0
+
 
 
