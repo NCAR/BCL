@@ -211,28 +211,89 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 	));
 
 	vlog(4, 'updated issue i%s mtime' % (iid))
-
     
+    #find cable status
+    SQL.execute('''
+	SELECT 
+	    cables.cid,
+	    cables.state,
+	    cables.suspected,
+	    cables.ticket,
+	    cp1.flabel as cp1_flabel,
+	    cp2.flabel as cp2_flabel
+	FROM 
+	    cables
 
-#    if len(cissue['extraview']) < 1 and not skip_ev:
-#	ev_id = EV.create( \
-#		'ssgev', \
-#		'ssg', \
-#		'nate', \
-#		'-----TEST----- %s: Bad Cable %s' % (cluster_info.get_cluster_name_formal(), cname), \
-#		'%s has been added to the %s bad cable list.' % (cname, cluster_info.get_cluster_name_formal()), { \
-#		    'HELP_LOCATION': EV.get_field_value_to_field_key('HELP_LOCATION', 'NWSC'),
-#		    'HELP_HOSTNAME': EV.get_field_value_to_field_key('HELP_HOSTNAME', cluster_info.get_cluster_name_formal()),
-#		    'HELP_HOSTNAME_OTHER': cname
-#		})
-#
-#	if ev_id:
-#	     cissue['extraview'].append(ev_id)
-#	     vlog(3, 'Opened Extraview Ticket %s for bad cable %s' % (ev_id, cable))
-#
-#    for ev_id in cissue['extraview']:
-#	EV.add_resolver_comment(ev_id, 'Bad Cable Comment:\n%s' % comment)
+	INNER JOIN
+	    cable_ports as cp1
+	ON
+	    cables.cid = ? and
+	    cables.cid = cp1.cid
 
+	LEFT OUTER JOIN
+	    cable_ports as cp2
+	ON
+	    cables.cid = cp2.cid and
+	    cp1.cpid != cp2.cpid
+             
+	LIMIT 1
+    ''',(
+	cid,
+    ))
+
+    for row in SQL.fetchall():
+	suspected = row['suspected'] + 1
+	cname = None
+	if row['cp2_flabel']:
+	    cname = '%s <--> %s ' % (row['cp1_flabel'],row['cp2_flabel'])
+	else:
+	    cname = row['cp1_flabel']
+	tid = row['ticket'] 
+             
+	if row['state'] == 'watch':
+	    #cable was only being watched. send it to suspect
+	    if tid is None: 
+		tid = EV.create( 
+		    'ssgev',
+		    'ssg',
+		    'nate',
+		    '-----TEST----- %s: Bad Cable %s' % (cluster_info.get_cluster_name_formal(), cname), 
+		    '%s has been added to the %s bad cable list.' % (
+			cname, 
+			cluster_info.get_cluster_name_formal()
+		    ), { 
+			'HELP_LOCATION': EV.get_field_value_to_field_key('HELP_LOCATION', 'NWSC'),
+			'HELP_HOSTNAME': EV.get_field_value_to_field_key(
+			    'HELP_HOSTNAME', 
+			    cluster_info.get_cluster_name_formal()
+			),
+			'HELP_HOSTNAME_OTHER': cname
+		})
+		vlog(3, 'Opened Extraview Ticket %s for bad cable %s' % (tid, cid))
+
+	    SQL.execute('''
+		UPDATE
+		    cables 
+		SET
+		    state = 'suspect',
+		    suspected = ?,
+		    ticket = ?
+		WHERE
+		    cid = ?
+		;''', (
+		    suspected,
+		    tid,
+		    cid
+	    ));
+
+	    vlog(3, 'Changed cable %s to suspect state %s times' % (cid, suspected))
+
+	EV.add_resolver_comment(tid, 'Bad Cable Issue:\nType: %s\nIssue: %s\nSource: %s\n%s' % (
+	    issue_type, 
+	    issue, 
+	    source,
+	    raw
+	))
 
 def list_state(what):
     """ dump state to user """
@@ -539,7 +600,6 @@ def run_parse(dump_dir):
 	    INSERT INTO 
 	    cables 
 	    (
-		state,
 		ctime,
 		length,
 		SN,
@@ -547,9 +607,8 @@ def run_parse(dump_dir):
 		state,
 		suspected
 	    ) VALUES (
-		?, ?, ?, ?, ?, ?, ?
+		?, ?, ?, ?, ?, ?
 	    );''', (
-		'new', 
 		timestamp,
 		gv(port1,'LengthDesc'),
 		gv(port1,'SN'),
