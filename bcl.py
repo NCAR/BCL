@@ -5,7 +5,6 @@ import extraview_cli
 from nlog import vlog,die_now
 from ClusterShell.NodeSet import NodeSet
 from ClusterShell.Task import task_self
-import yaml
 import os
 import syslog
 import pbs
@@ -17,6 +16,7 @@ import pprint
 import time
 import datetime
 import sqlite3
+import re
 
 def lock():
     """ Get lock for changes """
@@ -86,7 +86,11 @@ def initialize_db():
 	    --Number of times that cable has gone into suspect state
 	    suspected INTEGER,
 	    --Extraview Ticket number
-	    ticket INTEGER
+	    ticket INTEGER,
+	    --Physical Label
+	    plabel text,
+ 	    --Firmware Label
+	    flabel text
 	);
 
   	create table if not exists cable_ports (
@@ -293,6 +297,104 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 	    raw
 	))
 
+def resolve_cable(needle):
+    """ Resolve user inputed string for cable (needle)
+
+    Honored formats:
+	Cable: c#
+	Guid/Port: S{guid}/P{port}
+	Port Firmware Label
+	Port Physical Label
+	Port: p#
+    """
+    cable_match = re.compile(
+	r"""
+	    ^\s*
+	    (?P<needle>
+		(?:[sS]|)(?P<guid>(?:0x|)[a-fA-F0-9]*)/P(?P<guidport>[0-9]+)
+		|
+		c(?P<cid>[0-9]+)
+		|
+		[pP](?P<cpid>[0-9]+)
+		|
+		(?P<label_name>(?:\w|-|\ |/)*)/P(?P<label_port>[0-9]+)
+		|
+		(?P<label>(?:\w|-|\ |/)*(?:\s+<-*>\s+(?:\w|\ |/)*|))
+	    )
+	    \s*$
+	""",
+	re.VERBOSE
+	) 
+
+    match = cable_match.match(needle)
+    if not match:
+	return None
+
+    print match.groups()
+
+    if match.group('cid') or match.group('label') or match.group('label'):
+	vlog(5, 'matching against cid or label')
+	SQL.execute('''
+	    SELECT 
+		cables.cid as cid,
+		port.cpid as cpid
+	    from 
+		cables
+
+	    LEFT OUTER JOIN
+		cable_ports as port
+	    ON
+		cables.cid = port.cid 
+	    WHERE
+		cables.cid = ? or
+		cables.plabel = ? or
+		cables.flabel = ? 
+
+	    ORDER BY cables.ctime DESC
+	    LIMIT 1
+	''',(    
+	    match.group('cid'),
+	    match.group('label'),
+	    match.group('label')
+	))
+
+	for row in SQL.fetchall():
+	    print row
+	    return row['cid']
+
+    SQL.execute('''
+	SELECT 
+	    cables.cid as cid,
+	    port.cpid as cpid
+	from 
+	    cables
+
+	INNER JOIN
+	    cable_ports as port
+	ON
+	    (
+		port.cpid   = ? or
+		port.flabel = ? or
+		port.plabel = ? or
+		( port.guid = ? and port.port = ? ) or
+		( port.name = ? and port.port = ? )
+	    ) and
+	    cables.cid = port.cid 
+
+	ORDER BY cables.ctime DESC
+	LIMIT 1
+    ''',(    
+	int(match.group('cpid')) if match.group('cpid') else 0,
+	match.group('label') if match.group('label') else match.group('needle'),
+	match.group('label') if match.group('label') else match.group('needle'),
+	convert_guid_intstr(match.group('guid')) if match.group('guid') else None, 
+	    int(match.group('guidport')) if match.group('guid') else None,
+	match.group('label_name'), match.group('label_port'),
+    ))
+
+    print SQL.fetchall()
+
+
 def list_state(what, list_filter):
     """ dump state to user """
 
@@ -363,6 +465,10 @@ def list_state(what, list_filter):
  
 
     elif what == 'ports':
+	if list_filter:
+	    resolve_cable(list_filter)
+	    return 
+
         f='{0:<10}{1:<10}{2:<25}{3:<7}{4:<50}{5:<50}{6:<50}'
  	print f.format(
 		"cable_id",
@@ -682,7 +788,7 @@ def dump_help():
  	{0} list cables [watch|suspect|disabled|sibling|removed]
 	    dump list of cables
 
-  	{0} list ports
+  	{0} list ports {{c#|S{{guid}}/P{{port}}|cable port label}} 
 	    dump list of cable ports
 
     add: {0} add {{issue description}} {{c#|S{{guid}}/P{{port}}|cable port label}}
@@ -715,10 +821,10 @@ def dump_help():
     comment: {0} comment {{comment}} {{(bad cable id) c#}}  
 	add comment to bad cable's extraview ticket 
 
-    ignore: {0} ignore {{comment}} {{(bad cable id) c#}} 
+    ignore: {0} ignore {{comment}} {{(issue id) i#}} 
 	Note: only use this in special cases for issues that can not be fixed
 	release cable
-	ignore all future issues with this cable until state is change manually
+	ignore issue with this cable until state is change manually
  
     parse: {0} parse {{path to ib dumps dir}}
 	reads the output of ibnetdiscover, ibdiagnet2 and ibcv2
