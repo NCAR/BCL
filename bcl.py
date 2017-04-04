@@ -71,14 +71,6 @@ def initialize_db():
 	PRAGMA foreign_keys = ON;
 	BEGIN;
 
-	CREATE TABLE IF NOT EXISTS problems (
-	    pid INTEGER PRIMARY KEY,
-	    state TEXT,
-	    comment BLOB,
-	    --number of times this problem has re-occurred
-	    activations INTEGER
-	);
-
  	create table if not exists cables (
 	    cid INTEGER PRIMARY KEY AUTOINCREMENT,
 	    state TEXT,
@@ -88,6 +80,13 @@ def initialize_db():
 	    SN text,
 	    --Product Number
 	    PN text 
+	    --State enum - watch, suspect, disabled, sibling, removed
+	    state text,
+	    comment BLOB,
+	    --Number of times that cable has gone into suspect state
+	    suspected INTEGER,
+	    --Extraview Ticket number
+	    ticket INTEGER
 	);
 
   	create table if not exists cable_ports (
@@ -107,7 +106,7 @@ def initialize_db():
 
 	CREATE INDEX IF NOT EXISTS cable_ports_guid_index on cable_ports  (guid, port);
 
-  	create table if not exists issues (
+  	CREATE TABLE IF NOT EXISTS issues (
 	    iid INTEGER PRIMARY KEY AUTOINCREMENT,
 	    -- last time issue was generated
 	    mtime integer,
@@ -122,33 +121,6 @@ def initialize_db():
 	    cid INTEGER,
 	    FOREIGN KEY (cid) REFERENCES cables(cid)
 	);
-
- 	CREATE TABLE IF NOT EXISTS problem_cables (
-	    pid INTEGER,
-	    cid INTEGER,
-	    FOREIGN KEY (pid) REFERENCES problems(pid)
-	    FOREIGN KEY (cid) REFERENCES cables(cid)
-	);
-
-  	CREATE TABLE IF NOT EXISTS problem_sibling_cables (
-	    pid INTEGER,
-	    cid INTEGER,
-	    FOREIGN KEY (pid) REFERENCES problems(pid)
-	    FOREIGN KEY (cid) REFERENCES cables(cid)
-	);
-
-  	CREATE TABLE IF NOT EXISTS problem_issues (
-	    pid INTEGER,
-	    iid INTEGER,
- 	    FOREIGN KEY (pid) REFERENCES problems(pid)
-	    FOREIGN KEY (iid) REFERENCES issues(iid) 
-	);                       
-
-   	CREATE TABLE IF NOT EXISTS problem_tickets (
-	    pid INTEGER,
-	    tid INTEGER,
- 	    FOREIGN KEY (pid) REFERENCES problems(pid)
-	);   
 
 	COMMIT;
     """)
@@ -240,99 +212,7 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 
 	vlog(4, 'updated issue i%s mtime' % (iid))
 
-
-
-    return
-
-    cissue = None
-    cid = None
-
-    if port1 or port2:
-	#handle single ports
-	if not port1 and port2:
-	    port1 = port2
-	    port2 = None 
-
- 	#add other port if not included and known
-	if not port2 and port1['connection']:
-	    port2 = port1['connection']
-	    vlog(3, 'resolving cable other port %s <--> %s' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2)))
- 
-	cid = find_cable(port1, port2)
-
-    iid = None
-    #check if there is already an existing issue
-    for aid, aissue in STATE['issues'].iteritems():
-	if aissue['issue'] == issue and aissue['cable'] == cid:
-	    cissue = aissue;
-	    iid = aid
-
-    if cissue == None:
- 	iid = STATE['next_issue']
-	STATE['next_issue'] += 1
- 
-	vlog(2, 'new issue(%s) %s <--> %s' % (iid, ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2)))
-	cissue = {
-	    'cable': cid,
-	    'issue': issue,
-	    'mtime': None,
-	}
-
-	STATE['issues'][iid] = cissue
-
-    cissue['mtime'] = time.time()
-    add_problem('New Issue', iid, None)
-
-def add_problem(comment, issue_id = None, new_state = None):
-    """ create a problem against an issue """
-    global EV, STATE
-
-    vlog(4, 'add_problem(%s, %s, %s)' % (comment, issue_id, new_state))
-
-    #determine if problem already exists for this issue or cable
-    pid = None
-    prob = None
-
-    if issue_id:
-	cid = STATE['issues'][issue_id]['cable']
-
-	for apid,aprob in STATE['problems'].iteritems():
-	    if (cid and cid in aprob['cables']) or issue_id in aprob['issues']:
-		pid = apid
-		prob = aprob
-		break
-
-    #add problem against issue
-    if not prob:
-	pid = STATE['next_problem']
-	STATE['next_problem'] += 1
-
-	if new_state is None:
-	    new_state = 'new'
-
-	vlog(2, 'new problem(%s) ' % (pid))
-	prob = {
-	    'state': new_state,
-	    'comment': comment,
-	    'cables': [],
-	    'issues': [],
-	    'extraview': []
-	}
-	
-	STATE['problems'][pid] = prob
-
-    #make sure issue and cable are in problem
-    if issue_id:
-	print 'add %s bool=%s list=%s' % (issue_id,not issue_id in prob['issues'],prob['issues'])
-	if not issue_id in prob['issues']:
-	    vlog(4, 'adding issue %s to problem %s' % (issue_id, pid))
-	    prob['issues'].append(issue_id)
-
-	cid = STATE['issues'][issue_id]['cable']
-	if cid and not cid in prob['cables']:
- 	    vlog(4, 'adding cable %s to problem %s' % (cid, pid))
-	    prob['cables'].append(cid)                      
- 
+    
 
 #    if len(cissue['extraview']) < 1 and not skip_ev:
 #	ev_id = EV.create( \
@@ -358,17 +238,20 @@ def list_state(what):
     """ dump state to user """
 
     if what == 'cables':
-        f='{0:<10}{1:<15}{2:<7}{3:<15}{4:<17}{5:<50}{6:<50}'
+        f='{0:<10}{1:10}{2:<12}{3:<15}{4:<15}{5:<15}{6:<15}{7:<15}{8:<50}{9:<50}{10:<50}'
  	print f.format(
 		"cable_id",
+		"state",
+		"Suspected#",
+		"Ticket",
 		"ctime",
 		"length",
 		"Serial_Number",
 		"Product_Number",
+		"Comment",
 		"Firmware Label",
 		"Physical Label"
-	    ) 
-
+	    )            
  	SQL.execute('''
 	    SELECT 
 		cables.cid as cid,
@@ -376,6 +259,10 @@ def list_state(what):
 		cables.length as length,
 		cables.SN as SN,
 		cables.PN as PN,
+		cables.state as state,
+		cables.comment as comment,
+		cables.suspected as suspected,
+		cables.ticket as ticket,
 		cp1.flabel as cp1_flabel,
 		cp1.plabel as cp1_plabel,
 		cp2.flabel as cp2_flabel,
@@ -400,13 +287,18 @@ def list_state(what):
 	for row in SQL.fetchall():
 	    print f.format(
 		    'c%s' % (row['cid']),
+		    row['state'],
+		    row['suspected'],
+		    row['ticket'],
 		    row['ctime'],
 		    row['length'],
 		    row['SN'],
 		    row['PN'],
+		    row['comment'],
 		    '%s <--> %s' % (row['cp1_flabel'], row['cp2_flabel']),
 		    '%s <--> %s' % (row['cp1_plabel'], row['cp2_plabel'])
 		)
+ 
 
     elif what == 'ports':
         f='{0:<10}{1:<10}{2:<25}{3:<7}{4:<50}{5:<50}{6:<50}'
@@ -651,15 +543,19 @@ def run_parse(dump_dir):
 		ctime,
 		length,
 		SN,
-		PN
+		PN,
+		state,
+		suspected
 	    ) VALUES (
-		?, ?, ?, ?, ?
+		?, ?, ?, ?, ?, ?, ?
 	    );''', (
 		'new', 
 		timestamp,
 		gv(port1,'LengthDesc'),
 		gv(port1,'SN'),
 		gv(port1,'PN'), 
+		'watch', #watching all cables by default
+		0, #new cables havent been suspected yet
 	));
 	cid = SQL.lastrowid
 
