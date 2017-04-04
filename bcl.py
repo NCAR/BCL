@@ -139,8 +139,6 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
     """ Add issue to issues list """
     global EV, STATE
 
-    #vlog(3, 'add_issue(%s, %s, %s)' % (ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2), issue))
-
     iid = None
 
     #find if this exact issue already exists
@@ -295,7 +293,7 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 	    raw
 	))
 
-def list_state(what):
+def list_state(what, list_filter):
     """ dump state to user """
 
     if what == 'cables':
@@ -334,7 +332,8 @@ def list_state(what):
 	    INNER JOIN
 		cable_ports as cp1
 	    ON
-		cables.cid = cp1.cid
+		cables.cid = cp1.cid and
+		( ? IS NULL or cables.state = ? )
 
 	    LEFT OUTER JOIN
 		cable_ports as cp2
@@ -343,7 +342,9 @@ def list_state(what):
 		cp2.cpid != cp1.cpid
 
 	    GROUP BY cables.cid
-	''')
+	''', (
+	    list_filter, list_filter
+	))
 
 	for row in SQL.fetchall():
 	    print f.format(
@@ -432,92 +433,6 @@ def list_state(what):
 		    row['issue'],
 		    row['raw'].replace("\n", "\\n") if row['raw'] else None
 		)
- 
-    return 
-
-    initialize_state()
-
-    if what == 'problems':
-	f='{0:<10}{1:<10}{2:<20}{3:<20}{4:<20}{5:<50}'
-	print f.format("pid","state","extraview","cables","issues","comment")
-
-	for pid,prob in STATE['problems'].iteritems():
-	    cables = '-'
-	    if len(prob['cables']):
-		cables = ','.join(map(lambda x: 'c%s' % (str(x)), prob['cables']))
-
-	    issues = '-'
-	    if len(prob['issues']):
-		issues = ','.join(map(lambda x: 'i%s' % (str(x)), prob['issues']))
-
-	    print f.format(
-		    'p%s' % pid,
-		    prob['state'], 
-		    ','.join(map(str, prob['extraview'])) if len(prob['extraview']) else '-', 
-		    cables,
-		    issues,
-		    prob['comment']
-		)
-    elif what == 'issues':
-	f='{0:<10}{1:<10}{2:<25}{3:<50}'
- 	print f.format("issue_id","cable","last_seen","issue")
-	for iid,issue in STATE['issues'].iteritems():
-	    print f.format(
-		    'i%s' % iid,
-		    '-' if not issue['cable'] else 'c%s' % issue['cable'],
-		    datetime.datetime.fromtimestamp( int(issue['mtime'])).strftime('%Y-%m-%d %H:%M:%S'),
-		    issue['issue']
-		)     
-    elif what == 'cables':
-	f='{0:<10}{1:<7}{2:<15}{3:<17}{4:<50}{5:<50}'
- 	print f.format("cable_id","length","Serial_Number","Product_Number","Firmware Label","Physical Label")
-	for cid,cable in STATE['cables'].iteritems():
-	    fwlabel = '{0} <--> {1}'.format(
-		    cable['port1']['plabel'] if cable['port1'] else 'None',
-		    cable['port2']['plabel'] if cable['port2'] else 'None'
-		)
-	    clen = '-'
-	    SN = '-'
-	    PN = '-'
-	    if cable['port1']:
-		#cables have same PN/SN/length on both ports
-		clen = cable['port1']['LengthDesc'] if cable['port1']['LengthDesc'] else '-'
-		SN = cable['port1']['SN'] if cable['port1']['SN'] else '-'
-		PN = cable['port1']['PN'] if cable['port1']['PN'] else '-'
-	    
-	    plabel = fwlabel #TODO# add real -- temp fix --
-	    print f.format(
-		    'c%s' % cid,
-		    clen,
-		    SN,
-		    PN,
-		    fwlabel,
-		    plabel
-		)     
-    elif what == 'action':
-	f='{0:<10}{1:<10}{2:<20}{3:<100}'
-	print f.format("pid","state","extraview","comment")
-	for pid,prob in STATE['problems'].iteritems():
-	    print f.format(
-		    'p%s' % pid,
-		    prob['state'], 
-		    ','.join(map(str, prob['extraview'])) if len(prob['extraview']) else '-', 
-		    prob['comment']
-		)    
-
- 	    for cid in prob['cables']:
-		    cable = STATE['cables'][cid] 
-		    fwlabel = '{0} <--> {1}'.format(
-			    cable['port1']['plabel'] if cable['port1'] else 'None',
-			    cable['port2']['plabel'] if cable['port2'] else 'None'
-			)
-		    print '{0:>20} c{1}: {2}'.format('Cable',cid, fwlabel)           
-
-	    for iid in prob['issues']:
-		issue = STATE['issues'][iid]
-		print '{0:>20} i{1}: {2}'.format('Issue',iid, issue['issue'])
- 
-    release_state()
 
 def convert_guid_intstr(guid):
     """ normalise representation of guid to string of an integer 
@@ -761,66 +676,53 @@ def dump_help():
 	Print this help message
  
     list: 
-	{0} list action
-	    dump list of problems,cables,issues
-	   
 	{0} list issues
 	    dump list of issues
 
- 	{0} list problems
-	    dump list of problems
- 
- 	{0} list cables
+ 	{0} list cables [watch|suspect|disabled|sibling|removed]
 	    dump list of cables
 
-    add: {0} {{node range}} {{add}} {{comment}}
-	add node to bad node list 
+  	{0} list ports
+	    dump list of cable ports
+
+    add: {0} add {{issue description}} {{c#|S{{guid}}/P{{port}}|cable port label}}
+	Note: Use GUID/Port syntax or cable id (c#) to avoid applying to wrong cable
+	add cable to bad node list 
 	open EV against node in SSG queue
-	close node in pbs
 
-    release: {0} {{node range}} {{release}} {{comment}}
-	remove node from bad node list
-	close EV against node
-	open node in pbs
+    sibling: {0} sibiling {{(bad cable id) c#}} {{c#|S{{guid}}/P{{port}}|cable port label}}
+	mark cable as sibling to bad cable
+	disables sibling cable in fabric
 
-    hardware: {0} {{node range}} {{hardware}} {{comment}}
-	add node to bad node list and mark as bad hardware
-	open EV against node in SSG queue
-	close node and siblings in PBS
-	when jobs are done:
-	    poweroff node
+    disable: {0} disable {{(bad cable id) c#}}
+	disables cable in fabric
 
-    comment: {0} {{node range}} {{comment}} {{comment}}
-	add comment to node's extraview ticket 
-	change comment for node in PBS
+    casg: {0} casg {{comment}} {{(bad cable id) c#}}
+	disables cable in fabric
+	send extraview ticket to CASG
 
-    casg: {0} {{node range}} {{casg}} {{comment}}
-	switch node to hardware bad node list
-	when jobs are done:
-	    send extraview ticket to CASG
-	    poweroff node
+    release: {0} release {{comment}} {{(bad cable id) c#}} 
+	enable cable
+	set cable state to watch
 
-    attach: {0} {{node range}} {{attach}} {{extraview ids (comma delimited)}}
-	attach comma seperated list of extraview ticket ids to bad nodes
+    rejuvenate: {0} rejuvenate {{comment}} {{(bad cable id) c#}} 
+	Note: only use this if the cable has been replaced and it was not autodetected
+	release cable
+	sets the suspected count back to 0
+	disassociate Extraview ticket from Cable
 
-    detach: {0} {{node range}} {{detach}} {{extraview ids (comma delimited)}}
-	detach comma seperated list of extraview ticket ids from bad nodes
+    comment: {0} comment {{comment}} {{(bad cable id) c#}}  
+	add comment to bad cable's extraview ticket 
 
-    parse: {0} {{parse}} {{path to ib dumps dir}}
-	todo
+    parse: {0} parse {{path to ib dumps dir}}
+	reads the output of ibnetdiscover, ibdiagnet2 and ibcv2
+	generates issues against errors found 
+	checks if any cable has been replaced (new SN) and will set that cable back to watch state
 
     Environment Variables:
 	VERBOSE=[1-5]
 	    1: lowest
 	    5: highest
-
-
-Port1 Port2 STATE   EV   Comment Issues
-None  None  Suspect 4343 Unknown 
-    errors
-    errors
-
-
 	    
     """.format(argv[0]))
 
@@ -843,7 +745,10 @@ if len(argv) < 2:
 elif argv[1] == 'parse':
     run_parse(argv[2])  
 elif argv[1] == 'list':
-    list_state(argv[2])  
+    lfilter = None
+    if len(argv) == 4:
+	lfilter = argv[3]
+    list_state(argv[2], lfilter)  
 #elif argv[1] == 'auto':
 #    run_auto() 
 #elif argv[1] == 'list':
