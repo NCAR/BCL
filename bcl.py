@@ -688,7 +688,7 @@ def dump_help():
     add: {0} add {{issue description}} {{c#|S{{guid}}/P{{port}}|cable port label}}
 	Note: Use GUID/Port syntax or cable id (c#) to avoid applying to wrong cable
 	add cable to bad node list 
-	open EV against node in SSG queue
+	open EV against node in SSG queue or Assign to SSG queue
 
     sibling: {0} sibiling {{(bad cable id) c#}} {{c#|S{{guid}}/P{{port}}|cable port label}}
 	mark cable as sibling to bad cable
@@ -704,6 +704,7 @@ def dump_help():
     release: {0} release {{comment}} {{(bad cable id) c#}} 
 	enable cable
 	set cable state to watch
+	close Extraview ticket
 
     rejuvenate: {0} rejuvenate {{comment}} {{(bad cable id) c#}} 
 	Note: only use this if the cable has been replaced and it was not autodetected
@@ -714,6 +715,11 @@ def dump_help():
     comment: {0} comment {{comment}} {{(bad cable id) c#}}  
 	add comment to bad cable's extraview ticket 
 
+    ignore: {0} ignore {{comment}} {{(bad cable id) c#}} 
+	Note: only use this in special cases for issues that can not be fixed
+	release cable
+	ignore all future issues with this cable until state is change manually
+ 
     parse: {0} parse {{path to ib dumps dir}}
 	reads the output of ibnetdiscover, ibdiagnet2 and ibcv2
 	generates issues against errors found 
