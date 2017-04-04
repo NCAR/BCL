@@ -180,14 +180,14 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 	WHERE
 	    type = ? and
 	    issue = ? and
-	    raw = ? and
+	    ( ? IS NULL or raw = ? ) and
 	    source = ? and
 	    cid = ?
 	LIMIT 1
     ''',(
 	issue_type,
 	issue,
-	raw,
+	raw, raw,
 	source,
 	cid       
     ))
@@ -240,9 +240,6 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 
 	vlog(4, 'updated issue i%s mtime' % (iid))
 
-
-    print iid
- 
 
 
     return
