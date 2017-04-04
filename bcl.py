@@ -330,10 +330,7 @@ def resolve_cable(needle):
     if not match:
 	return None
 
-    print match.groups()
-
     if match.group('cid') or match.group('label') or match.group('label'):
-	vlog(5, 'matching against cid or label')
 	SQL.execute('''
 	    SELECT 
 		cables.cid as cid,
@@ -359,8 +356,7 @@ def resolve_cable(needle):
 	))
 
 	for row in SQL.fetchall():
-	    print row
-	    return row['cid']
+	    return {'cid':row['cid'], 'cpid':row['cpid']}
 
     SQL.execute('''
 	SELECT 
@@ -392,8 +388,10 @@ def resolve_cable(needle):
 	match.group('label_name'), match.group('label_port'),
     ))
 
-    print SQL.fetchall()
+    for row in SQL.fetchall():
+	return {'cid':row['cid'], 'cpid':row['cpid']}
 
+    return None
 
 def list_state(what, list_filter):
     """ dump state to user """
@@ -465,9 +463,16 @@ def list_state(what, list_filter):
  
 
     elif what == 'ports':
+	cid=None
+	cpid=None
 	if list_filter:
-	    resolve_cable(list_filter)
-	    return 
+	    b = resolve_cable(list_filter)
+	    if b:
+		cid = b['cid']
+		cpid = b['cpid']
+	    else:
+		vlog(1, 'unable to resolve %s' % list_filter)
+		return
 
         f='{0:<10}{1:<10}{2:<25}{3:<7}{4:<50}{5:<50}{6:<50}'
  	print f.format(
@@ -489,10 +494,18 @@ def list_state(what, list_filter):
 		guid,
 		port,
 		name
-	    from 
+	    FROM 
 		cable_ports 
+	    WHERE
+		? IS NULL or
+		cpid = ? or 
+		cid = ?
 	    ORDER BY cpid ASC
-	''')
+	''', (
+	    0 if cid or cpid else None,
+	    cpid,
+	    cid
+	))
 
 	for row in SQL.fetchall():
 	    print f.format(
