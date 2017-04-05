@@ -159,7 +159,7 @@ def add_sibling(cid, source_cid, comment):
     ))
 
     for row in SQL.fetchall():
-	if row['state'] == 'watch':
+	if row['state'] == 'watch' or row['state'] == 'sibling':
 	    vlog(3, 'ignoring sibling cable c%s against c%s as state is %s' % (cid, source_cid, row['state']))
 	    return
 
@@ -205,6 +205,7 @@ def add_sibling(cid, source_cid, comment):
 
 	#TODO: disable cable in fabric
 
+	SQL.execute('BEGIN;')
 	SQL.execute('''
 	    UPDATE
 		cables 
@@ -219,6 +220,7 @@ def add_sibling(cid, source_cid, comment):
 		comment,
 		cid
 	));
+	SQL.execute('COMMIT;')
 
 	if row['ticket']:
 	    EV.add_resolver_comment(row['ticket'], '''
@@ -240,7 +242,7 @@ def add_sibling(cid, source_cid, comment):
 		source_label
 	    ))
 	    vlog(3, 'updated Extraview Ticket %s for c%s' % (source_cid_ticket, source_cid))
-             
+
 
 def add_issue(issue_type, cid, issue, raw, source, timestamp):
     """ Add issue to issues list """
@@ -270,6 +272,7 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 	cid       
     ))
 
+    SQL.execute('BEGIN;')
     #only care about last time this issue was seen	
     #in theory, there should never be more than 1
     #since a new issue would have a new cable
@@ -321,6 +324,7 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 	));
 
 	vlog(4, 'updated issue i%s mtime' % (iid))
+
     
     #find cable status
     SQL.execute('''
@@ -329,6 +333,7 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 	    cables.state,
 	    cables.suspected,
 	    cables.ticket,
+	    cables.sibling as sibling,
 	    cp1.flabel as cp1_flabel,
 	    cp2.flabel as cp2_flabel
 	FROM 
@@ -360,7 +365,7 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 	    cname = row['cp1_flabel']
 	tid = row['ticket'] 
              
-	if row['state'] == 'watch':
+	if row['state'] == 'watch' or row['state'] == 'sibling':
 	    #cable was only being watched. send it to suspect
 	    if tid is None: 
 		tid = EV.create( 
@@ -389,13 +394,18 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 		    ''' % (suspected)
 		});
 
+	    if row['sibling']:
+		#suspect cable should not be a sibling
+		vlog(3, 'Releasing sibling status of c%s from c%s' % (cid, row['sibling']))
+
 	    SQL.execute('''
 		UPDATE
 		    cables 
 		SET
 		    state = 'suspect',
 		    suspected = ?,
-		    ticket = ?
+		    ticket = ?,
+		    sibling = NULL
 		WHERE
 		    cid = ?
 		;''', (
@@ -412,6 +422,8 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 	    source,
 	    raw
 	))
+
+    SQL.execute('COMMIT;')
 
 def resolve_cable(needle):
     """ Resolve user inputed string for cable (needle)
@@ -551,6 +563,7 @@ def resolve_issues(user_input):
 def ignore_issue(comment, iid):
     """ Ignore issue """
 
+    SQL.execute('BEGIN;')
     SQL.execute('''
 	UPDATE
 	    issues 
@@ -559,13 +572,14 @@ def ignore_issue(comment, iid):
 	WHERE
 	    iid = ?
 	;''', (iid,));
-
+    SQL.execute('COMMIT;')
 
     vlog(2, 'issue i%s will be ignored: %s' % (iid, comment))
 
 def honor_issue(comment, iid):
     """ Honor issue """
 
+    SQL.execute('BEGIN;')
     SQL.execute('''
 	UPDATE
 	    issues 
@@ -574,7 +588,7 @@ def honor_issue(comment, iid):
 	WHERE
 	    iid = ?
 	;''', (iid,));
-
+    SQL.execute('COMMIT;')
 
     vlog(2, 'issue i%s will be honored: %s' % (iid, comment))
 
@@ -595,6 +609,7 @@ def comment_cable(cid, comment):
 	cid,
     ))
 
+    SQL.execute('BEGIN;')
     for row in SQL.fetchall():
 	vlog(2, 'add comment to cable c%s: %s' % (cid, comment))
 
@@ -614,8 +629,13 @@ def comment_cable(cid, comment):
 	    EV.add_resolver_comment(row['ticket'], 'Bad Cable Comment:\n%s' % comment)
 	    vlog(3, 'Updated Extraview Ticket %s for c%s with comment: %s' % (row['ticket'], cid, comment))
 
+    SQL.execute('COMMIT;')
+
 def release_cable(cid, comment, full = False):
     """ Release cable """
+
+    ticket = None
+    flabel = None
 
     SQL.execute('''
 	SELECT 
@@ -623,6 +643,7 @@ def release_cable(cid, comment, full = False):
 	    cables.state,
 	    cables.suspected,
 	    cables.ticket,
+	    cables.flabel as flabel,
 	    cp1.guid as cp1_guid,
 	    cp1.port as cp1_port,
  	    cp2.guid as cp2_guid,
@@ -648,14 +669,15 @@ def release_cable(cid, comment, full = False):
     ))
 
     for row in SQL.fetchall():
-	if row['state'] != 'watch':
-	    vlog(3, 'release cable c%s from state %s' % (cid, row['state']))
-	else:
+	if row['state'] == 'watch':
 	    vlog(3, 'ignoring release cable c%s from state %s' % (cid, row['state']))
-	    continue
+	    return
+
+	vlog(3, 'release cable c%s from state %s' % (cid, row['state']))
 
 	#TODO: enable cable in fabric
 
+	SQL.execute('BEGIN;')
 	SQL.execute('''
 	    UPDATE
 		cables 
@@ -663,7 +685,8 @@ def release_cable(cid, comment, full = False):
 		state = 'watch',
 		comment = ?,
 		suspected = ?,
-		ticket = ?
+		ticket = ?,
+		sibling = NULL
 	    WHERE
 		cid = ?
 	    ;''', (
@@ -672,10 +695,35 @@ def release_cable(cid, comment, full = False):
 		None if full else row['ticket'],
 		cid
 	));
+	SQL.execute('COMMIT;')
 
-	if row['ticket']:
-	    EV.close(row['ticket'], 'Released Bad Cable\nBad Cable Comment:\n%s' % comment)
-	    vlog(3, 'Closed Extraview Ticket %s for c%s' % (row['ticket'], cid))
+	ticket = row['ticket']
+	flabel = row['flabel']
+
+    #get list of siblings and their tickets
+    SQL.execute('''
+	SELECT 
+	    cid,
+	    ticket,
+	    flabel
+	FROM 
+	    cables
+	WHERE
+	    sibling = ?
+    ''',(
+	cid,
+    ))       
+
+    for row in SQL.fetchall():
+	vlog(3, 'release sibling cable c%s of c%s' % (row['cid'], cid))
+	release_cable(row['cid'], 'Releasing sibling of %s' % (flabel))
+
+	if ticket:
+	    EV.add_resolver_comment(ticket, 'Sibling cable %s enabled and released.' % row['flabel'])
+
+    if ticket:
+	EV.close(ticket, 'Released Bad Cable\nBad Cable Comment:\n%s' % comment)
+	vlog(3, 'Closed Extraview Ticket %s for c%s' % (ticket, cid))
 
 
 def list_state(what, list_filter):
@@ -1063,6 +1111,8 @@ def run_parse(dump_dir):
 	if port2:
 	    port2['cable_id'] = cid
 
+    SQL.execute('COMMIT;')
+
     for issue in issues:
 	cid = None
 
@@ -1080,7 +1130,6 @@ def run_parse(dump_dir):
 	    timestamp
 	)
 
-    SQL.execute('COMMIT;')
 
     unlock()
 
@@ -1120,6 +1169,8 @@ def dump_help():
 	enable cable in fabric
 	set cable state to watch
 	close Extraview ticket
+	release any sibling cables
+	release sibling status of cable (don't consider cable as sibling anymore)
 
     rejuvenate: {0} rejuvenate {{comment}} {{(bad cable id) c#}}+
 	Note: only use this if the cable has been replaced and it was not autodetected
@@ -1197,9 +1248,12 @@ else:
 	    comment_cable(cid, argv[2]) 
     elif CMD == 'sibling':
 	source_cid = resolve_cable(argv[3]) 
-	for cid in resolve_cables(argv[4:]):
-	    add_sibling(cid, source_cid['cid'], argv[2]) 
- 
+	if source_cid:
+	    for cid in resolve_cables(argv[4:]):
+		add_sibling(cid, source_cid['cid'], argv[2]) 
+    else:
+	dump_help() 
+
 	    #b = resolve_cable(list_filter)
 #    elif CMD == 'release':
 #	del_nodes(NODES, argv[3]) 
