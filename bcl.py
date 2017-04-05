@@ -116,6 +116,7 @@ def initialize_db():
 	    mtime integer,
 	    -- Parsed error type
 	    type text,
+	    -- Issue description (aka what is wrong)
 	    issue blob,
 	    --Raw error message
 	    raw blob,
@@ -123,6 +124,8 @@ def initialize_db():
 	    source blob,
 	    --cable source of issue (may be null)
 	    cid INTEGER,
+	    --should these issues be ignored?
+	    ignore BOOLEAN,
 	    FOREIGN KEY (cid) REFERENCES cables(cid)
 	);
 
@@ -148,7 +151,8 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
     #find if this exact issue already exists
     SQL.execute('''
 	SELECT 
-	    iid
+	    iid,
+	    ignore
 	FROM 
 	    issues
 	WHERE
@@ -171,6 +175,9 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
     #since a new issue would have a new cable
     for row in SQL.fetchall():
 	iid = row['iid']
+	if row['ignore'] != 0:
+	    vlog(2, 'Ignoring issue i%s' % (iid))
+	    return
 	break
 
     if not iid:
@@ -178,6 +185,7 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 	    INSERT INTO 
 	    issues 
 	    (
+		ignore,
 		type,
 		issue,
 		raw,
@@ -185,7 +193,7 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 		mtime,
 		cid
 	    ) VALUES (
-		?, ?, ?, ?, ?, ?
+		0, ?, ?, ?, ?, ?, ?
 	    );''', (
 		issue_type,
 		issue,
@@ -404,7 +412,7 @@ def resolve_cable(needle):
     return None
 
 def resolve_cables(user_input):
-    """ Resolve user inputed set of strings into cable list """
+    """ Resolve user inputed set of strings into cable id list """
 
     cids = []
 
@@ -418,6 +426,42 @@ def resolve_cables(user_input):
 	    vlog(2, 'unable to resolve %s to a known cable or port' % (needle))
 
     return cids
+
+def resolve_issues(user_input):
+    """ Resolve user inputed set of strings into issue id list """
+    #TODO: should we waste time to resolve IID number is valid?
+
+    iids = []
+
+    issue_match = re.compile(
+	r"""^\s*[iI](?P<iid>[0-9]+)\s*$""",
+	re.VERBOSE
+	) 
+
+    for needle in user_input:
+	match = issue_match.match(needle)
+	if not match:
+	    vlog(2, 'unable to resolve %s to an issue' % (needle))
+	    continue
+
+	iids.append(int(match.group('iid')))
+
+    return iids
+
+def ignore_issue(comment, iid):
+    """ Ignore issue """
+
+    SQL.execute('''
+	UPDATE
+	    issues 
+	SET
+	    ignore = 1
+	WHERE
+	    iid = ?
+	;''', (iid,));
+
+
+    vlog(2, 'issue i%s will be ignored: %s' % (iid, comment))
 
 def release_cable(cid, comment, full = False):
     """ Release cable """
@@ -609,10 +653,11 @@ def list_state(what, list_filter):
 		)
 
     elif what == 'issues':
-        f='{0:<10}{1:<10}{2:<15}{3:<20}{4:<50}{5:<50}'
+        f='{0:<10}{1:<10}{2:<10}{3:<15}{4:<20}{5:<50}{6:<50}'
  	print f.format(
 		"issue_id",
 		"cable_id",
+		"Ignored",
 		"mtime",
 		"source",
 		"issue",
@@ -627,6 +672,7 @@ def list_state(what, list_filter):
 		raw,
 		source,
 		mtime,
+		ignore,
 		cid 
 	    from 
 		issues 
@@ -637,6 +683,7 @@ def list_state(what, list_filter):
 	    print f.format(
 		    'i%s' % row['iid'],
 		    'c%s' % row['cid'],
+		    'False' if row['ignore'] == 0 else 'True',
 		    row['mtime'],
 		    row['source'],
 		    row['issue'],
@@ -975,7 +1022,10 @@ else:
     elif CMD == 'rejuvenate':
 	for cid in resolve_cables(argv[3:]):
 	    release_cable(cid, argv[2], True)
- 
+    elif CMD == 'ignore':
+	for iid in resolve_issues(argv[3:]):
+	    ignore_issue(argv[2], iid)
+
 	    #b = resolve_cable(list_filter)
 #    elif CMD == 'release':
 #	del_nodes(NODES, argv[3]) 
