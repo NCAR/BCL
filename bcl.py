@@ -222,26 +222,25 @@ def add_sibling(cid, source_cid, comment):
 	));
 	SQL.execute('COMMIT;')
 
-	if row['ticket']:
-	    EV.add_resolver_comment(row['ticket'], '''
-		Cable %s marked as sibling to %s for #%s. 
-		Cable %s has been disabled.
+	msg =  '''
+		Cable %s has been disabled in fabric. Cable marked as sibling to %s.
+
+		Bad Cable Ticket# %s
+		Sibling Cable Ticket# %s
 	    ''' % (
-		row['flabel'],
 		row['flabel'],
 		source_label,
-		source_cid_ticket 
-	    ))
+		source_cid_ticket,
+		row['Ticket'],
+	    )
+
+	if row['ticket']:
 	    vlog(3, 'updated Extraview Ticket %s for c%s' % (row['ticket'], cid))
+	    EV.add_resolver_comment(row['ticket'], msg)
 
 	if source_cid_ticket:
-	    EV.add_resolver_comment(row['ticket'], '''
-		Cable %s marked as sibling to %s and disabled.
-	    ''' % (
-		row['flabel'],
-		source_label
-	    ))
-	    vlog(3, 'updated Extraview Ticket %s for c%s' % (source_cid_ticket, source_cid))
+	    EV.add_resolver_comment(source_cid_ticket, msg)
+            vlog(3, 'updated Extraview Ticket %s for source c%s' % (source_cid_ticket, source_cid))
 
 
 def add_issue(issue_type, cid, issue, raw, source, timestamp):
@@ -636,6 +635,7 @@ def release_cable(cid, comment, full = False):
 
     ticket = None
     flabel = None
+    sibling = None
 
     SQL.execute('''
 	SELECT 
@@ -644,6 +644,7 @@ def release_cable(cid, comment, full = False):
 	    cables.suspected,
 	    cables.ticket,
 	    cables.flabel as flabel,
+	    cables.sibling as sibling,
 	    cp1.guid as cp1_guid,
 	    cp1.port as cp1_port,
  	    cp2.guid as cp2_guid,
@@ -699,6 +700,7 @@ def release_cable(cid, comment, full = False):
 
 	ticket = row['ticket']
 	flabel = row['flabel']
+	sibling = row['sibling']
 
     #get list of siblings and their tickets
     SQL.execute('''
@@ -720,6 +722,28 @@ def release_cable(cid, comment, full = False):
 
 	if ticket:
 	    EV.add_resolver_comment(ticket, 'Sibling cable %s enabled and released.' % row['flabel'])
+
+    #get siblings ticket and tell them sibling was released
+    if sibling:
+	SQL.execute('''
+	    SELECT 
+		cid,
+		ticket,
+		flabel
+	    FROM 
+		cables
+	    WHERE
+		cid = ?
+	''',(
+	    sibling,
+	))       
+
+	for row in SQL.fetchall():
+	    vlog(3, 'notify cable c%s of sibling release of c%s' % (sibling, cid))
+
+	    if row['ticket']:
+		EV.add_resolver_comment(row['ticket'], 'Sibling cable %s enabled and released.' % (flabel))
+		vlog(3, 'Update Extraview Ticket %s for c%s that c%s was released' % (row['ticket'], sibling, cid))
 
     if ticket:
 	EV.close(ticket, 'Released Bad Cable\nBad Cable Comment:\n%s' % comment)
