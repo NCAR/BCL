@@ -419,7 +419,7 @@ def resolve_cables(user_input):
 
     return cids
 
-def release_cable(cid, comment):
+def release_cable(cid, comment, full = False):
     """ Release cable """
 
     SQL.execute('''
@@ -453,27 +453,34 @@ def release_cable(cid, comment):
     ))
 
     for row in SQL.fetchall():
-	vlog(3, 'release cable c%s from state %s' % (cid, row['state']))
+	if row['state'] != 'watch':
+	    vlog(3, 'release cable c%s from state %s' % (cid, row['state']))
+	else:
+	    vlog(3, 'ignoring release cable c%s from state %s' % (cid, row['state']))
+	    continue
+
+	#TODO: enable cable in fabric
 
 	SQL.execute('''
 	    UPDATE
 		cables 
 	    SET
 		state = 'watch',
-		comment = ?
+		comment = ?,
+		suspected = ?,
+		ticket = ?
 	    WHERE
 		cid = ?
 	    ;''', (
 		comment,
+		0 if full else row['suspected'],
+		None if full else row['ticket'],
 		cid
 	));
 
 	if row['ticket']:
 	    EV.close(row['ticket'], 'Released Bad Cable\nBad Cable Comment:\n%s' % comment)
 	    vlog(3, 'Closed Extraview Ticket %s for c%s' % (row['ticket'], cid))
-
- 
- 
 
 
 def list_state(what, list_filter):
@@ -904,7 +911,7 @@ def dump_help():
 	send extraview ticket to CASG
 
     release: {0} release {{comment}} {{(bad cable id) c#}} 
-	enable cable
+	enable cable in fabric
 	set cable state to watch
 	close Extraview ticket
 
@@ -965,6 +972,9 @@ else:
     elif CMD == 'release':
 	for cid in resolve_cables(argv[3:]):
 	    release_cable(cid, argv[2])
+    elif CMD == 'rejuvenate':
+	for cid in resolve_cables(argv[3:]):
+	    release_cable(cid, argv[2], True)
  
 	    #b = resolve_cable(list_filter)
 #    elif CMD == 'release':
