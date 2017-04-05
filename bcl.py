@@ -272,6 +272,14 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 			'HELP_HOSTNAME_OTHER': cname
 		})
 		vlog(3, 'Opened Extraview Ticket %s for bad cable %s' % (tid, cid))
+	    else:
+		EV.assign_group(tid, 'ssg', 'nate', {
+		    'COMMENTS':	'''
+			Ticket has been reopened for repeat offender bad cable.
+
+			Offense: %s
+		    ''' % (suspected)
+		});
 
 	    SQL.execute('''
 		UPDATE
@@ -307,6 +315,8 @@ def resolve_cable(needle):
 	Port Physical Label
 	Port: p#
     """
+    global SQL
+
     cable_match = re.compile(
 	r"""
 	    ^\s*
@@ -392,6 +402,79 @@ def resolve_cable(needle):
 	return {'cid':row['cid'], 'cpid':row['cpid']}
 
     return None
+
+def resolve_cables(user_input):
+    """ Resolve user inputed set of strings into cable list """
+
+    cids = []
+
+    for needle in user_input:
+	cret = resolve_cable(needle)
+	vlog(4, 'resolving %s to %s' %(needle, cret))
+
+	if cret and not cret['cid'] in cids:
+	    cids.append(cret['cid'])
+	else:
+	    vlog(2, 'unable to resolve %s to a known cable or port' % (needle))
+
+    return cids
+
+def release_cable(cid, comment):
+    """ Release cable """
+
+    SQL.execute('''
+	SELECT 
+	    cables.cid,
+	    cables.state,
+	    cables.suspected,
+	    cables.ticket,
+	    cp1.guid as cp1_guid,
+	    cp1.port as cp1_port,
+ 	    cp2.guid as cp2_guid,
+	    cp2.port as cp2_port
+	FROM 
+	    cables
+
+	INNER JOIN
+	    cable_ports as cp1
+	ON
+	    cables.cid = ? and
+	    cables.cid = cp1.cid
+
+	LEFT OUTER JOIN
+	    cable_ports as cp2
+	ON
+	    cables.cid = cp2.cid and
+	    cp1.cpid != cp2.cpid
+             
+	LIMIT 1
+    ''',(
+	cid,
+    ))
+
+    for row in SQL.fetchall():
+	vlog(3, 'release cable c%s from state %s' % (cid, row['state']))
+
+	SQL.execute('''
+	    UPDATE
+		cables 
+	    SET
+		state = 'watch',
+		comment = ?
+	    WHERE
+		cid = ?
+	    ;''', (
+		comment,
+		cid
+	));
+
+	if row['ticket']:
+	    EV.close(row['ticket'], 'Released Bad Cable\nBad Cable Comment:\n%s' % comment)
+	    vlog(3, 'Closed Extraview Ticket %s for c%s' % (row['ticket'], cid))
+
+ 
+ 
+
 
 def list_state(what, list_filter):
     """ dump state to user """
@@ -867,27 +950,23 @@ vlog(5, argv)
 
 if len(argv) < 2:
     dump_help() 
-elif argv[1] == 'parse':
-    run_parse(argv[2])  
-elif argv[1] == 'list':
-    lfilter = None
-    if len(argv) == 4:
-	lfilter = argv[3]
-    list_state(argv[2], lfilter)  
-#elif argv[1] == 'auto':
-#    run_auto() 
-#elif argv[1] == 'list':
-#    NODES=NodeSet('') 
-#    list_state(NODES)
-#elif len(argv) == 3 and argv[2] == 'list':
-#    NODES=NodeSet(argv[1]) 
-#    list_state(NODES)
-#elif len(argv) == 4:
-#    NODES=NodeSet(argv[1]) 
-#    CMD=argv[2].lower()
-#
-#    if CMD == 'add':
-#	add_nodes(NODES, argv[3])
+else:
+    CMD=argv[1].lower()
+    if CMD == 'parse':
+	run_parse(argv[2])  
+    elif CMD == 'list':
+	lfilter = None
+	if len(argv) == 4:
+	    lfilter = argv[3]
+	list_state(argv[2], lfilter)  
+    elif CMD == 'add':
+	for cid in resolve_cables(argv[3:]):
+	    add_issue('Manual Entry', cid, argv[2], None, 'admin', int(time.time()))
+    elif CMD == 'release':
+	for cid in resolve_cables(argv[3:]):
+	    release_cable(cid, argv[2])
+ 
+	    #b = resolve_cable(list_filter)
 #    elif CMD == 'release':
 #	del_nodes(NODES, argv[3]) 
 #    elif CMD == 'comment':
@@ -902,11 +981,8 @@ elif argv[1] == 'list':
 #	mark_casg(NODES, argv[3]) 
 #    else:
 #	dump_help() 
-else:
-    dump_help() 
 
-
-
+#dump_help() 
 
 
 
