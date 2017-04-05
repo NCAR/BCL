@@ -931,9 +931,11 @@ def run_parse(dump_dir):
 		SN,
 		PN,
 		state,
-		suspected
+		suspected,
+		flabel,
+		plabel
 	    ) VALUES (
-		?, ?, ?, ?, ?, ?
+		?, ?, ?, ?, ?, ?, ?, ?
 	    );''', (
 		timestamp,
 		gv(port1,'LengthDesc'),
@@ -941,6 +943,8 @@ def run_parse(dump_dir):
 		gv(port1,'PN'), 
 		'watch', #watching all cables by default
 		0, #new cables havent been suspected yet
+		'%s <--> %s' % (ib_diagnostics.port_pretty(port1), ib_diagnostics.port_pretty(port2)),
+		None
 	));
 	cid = SQL.lastrowid
 
