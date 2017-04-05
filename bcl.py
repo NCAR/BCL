@@ -463,6 +463,42 @@ def ignore_issue(comment, iid):
 
     vlog(2, 'issue i%s will be ignored: %s' % (iid, comment))
 
+def comment_cable(cid, comment):
+    """ Add comment to cable """
+
+    SQL.execute('''
+	SELECT 
+	    cid,
+	    ticket,
+	    comment
+	FROM 
+	    cables
+	WHERE
+	    cables.cid = ?
+	LIMIT 1
+    ''',(
+	cid,
+    ))
+
+    for row in SQL.fetchall():
+	vlog(2, 'add comment to cable c%s: %s' % (cid, comment))
+
+	SQL.execute('''
+	    UPDATE
+		cables 
+	    SET
+		comment = ?
+	    WHERE
+		cid = ?
+	    ;''', (
+		comment,
+		cid
+	));
+
+	if row['ticket']:
+	    EV.add_resolver_comment(row['ticket'], 'Bad Cable Comment:\n%s' % comment)
+	    vlog(3, 'Updated Extraview Ticket %s for c%s with comment: %s' % (row['ticket'], cid, comment))
+
 def release_cable(cid, comment, full = False):
     """ Release cable """
 
@@ -1025,7 +1061,10 @@ else:
     elif CMD == 'ignore':
 	for iid in resolve_issues(argv[3:]):
 	    ignore_issue(argv[2], iid)
-
+    elif CMD == 'comment':
+	for cid in resolve_cables(argv[3:]):
+	    comment_cable(cid, argv[2]) 
+ 
 	    #b = resolve_cable(list_filter)
 #    elif CMD == 'release':
 #	del_nodes(NODES, argv[3]) 
