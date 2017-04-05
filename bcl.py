@@ -36,8 +36,6 @@ def unlock():
 	LOCK.close()
 	LOCK = None
 	vlog(5, 'released lock')
-             
-
 
 def initialize_db():
     """ Initialize DATABASE state variable 
@@ -54,19 +52,7 @@ def initialize_db():
 
 
     lock()
-    #SQL.execute('SELECT name FROM sqlite_master WHERE type=? AND name=?', ('table', 'table_name')); 
 
-    #SQL.execute('''                                               
-    #SELECT name FROM sqlite_master                                
-    #  WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' 
-    #  UNION ALL                                                   
-    #  SELECT name FROM sqlite_temp_master                         
-    #    WHERE type IN ('table','view')                            
-    #    ORDER BY 1;                                               
-    #''')                                                          
-    #print SQL.fetchall()                                          
-
-    #print SQL.fetchall()
     SQL.executescript("""
 	PRAGMA foreign_keys = ON;
 	BEGIN;
@@ -82,6 +68,9 @@ def initialize_db():
 	    PN text 
 	    --State enum - watch, suspect, disabled, sibling, removed
 	    state text,
+	    --Sibling cable that this cable is being disabled for currently
+	    --only 1 sibling per cable
+	    sibling INTEGER,
 	    comment BLOB,
 	    --Number of times that cable has gone into suspect state
 	    suspected INTEGER,
@@ -90,7 +79,8 @@ def initialize_db():
 	    --Physical Label
 	    plabel text,
  	    --Firmware Label
-	    flabel text
+	    flabel text,
+	    FOREIGN KEY (sibling) REFERENCES cables(cid)
 	);
 
   	create table if not exists cable_ports (
@@ -142,9 +132,119 @@ def release_db():
     SQL_CONNECTION.close()
     vlog(5, 'released db')
 
+def add_sibling(cid, source_cid, comment):
+    """ Add sibling against source_cid """
+    global EV
+
+    if not cid or not source_cid:
+	vlog(1, 'invalid cid c%s or source cid c%s' % (cid, source_cid))
+	return
+
+    source_cid_ticket = None
+    source_label = None
+
+    SQL.execute('''
+	SELECT 
+	    cables.cid,
+	    cables.state,
+	    cables.ticket,
+	    cables.flabel
+	FROM 
+	    cables
+	WHERE
+	    cables.cid = ?
+	LIMIT 1
+    ''',(
+	source_cid,
+    ))
+
+    for row in SQL.fetchall():
+	if row['state'] == 'watch':
+	    vlog(3, 'ignoring sibling cable c%s against c%s as state is %s' % (cid, source_cid, row['state']))
+	    return
+
+	source_cid_ticket = row['ticket']
+	source_label = row['flabel']
+
+    SQL.execute('''
+	SELECT 
+	    cables.cid,
+	    cables.state,
+	    cables.ticket,
+	    cables.flabel,
+	    cp1.guid as cp1_guid,
+	    cp1.port as cp1_port,
+ 	    cp2.guid as cp2_guid,
+	    cp2.port as cp2_port
+	FROM 
+	    cables
+
+	INNER JOIN
+	    cable_ports as cp1
+	ON
+	    cables.cid = ? and
+	    cables.cid = cp1.cid
+
+	LEFT OUTER JOIN
+	    cable_ports as cp2
+	ON
+	    cables.cid = cp2.cid and
+	    cp1.cpid != cp2.cpid
+             
+	LIMIT 1
+    ''',(
+	cid,
+    ))
+
+    for row in SQL.fetchall():
+	if row['state'] != 'watch':
+	    vlog(3, 'setting sibling cable c%s against cable c%s' % (cid, source_cid))
+	else:
+	    vlog(3, 'ignoring sibling cable c%s from state %s against c%s' % (cid, row['state'],source_cid))
+	    continue
+
+	#TODO: disable cable in fabric
+
+	SQL.execute('''
+	    UPDATE
+		cables 
+	    SET
+		state = 'sibling',
+		sibling = ?,
+		comment = ?
+	    WHERE
+		cid = ?
+	    ;''', (
+		source_cid,
+		comment,
+		cid
+	));
+
+	if row['ticket']:
+	    EV.add_resolver_comment(row['ticket'], '''
+		Cable %s marked as sibling to %s for #%s. 
+		Cable %s has been disabled.
+	    ''' % (
+		row['flabel'],
+		row['flabel'],
+		source_label,
+		source_cid_ticket 
+	    ))
+	    vlog(3, 'updated Extraview Ticket %s for c%s' % (row['ticket'], cid))
+
+	if source_cid_ticket:
+	    EV.add_resolver_comment(row['ticket'], '''
+		Cable %s marked as sibling to %s and disabled.
+	    ''' % (
+		row['flabel'],
+		source_label
+	    ))
+	    vlog(3, 'updated Extraview Ticket %s for c%s' % (source_cid_ticket, source_cid))
+             
+
 def add_issue(issue_type, cid, issue, raw, source, timestamp):
     """ Add issue to issues list """
-    global EV, STATE
+    global EV
 
     iid = None
 
@@ -582,9 +682,10 @@ def list_state(what, list_filter):
     """ dump state to user """
 
     if what == 'cables':
-        f='{0:<10}{1:10}{2:<12}{3:<15}{4:<15}{5:<15}{6:<15}{7:<15}{8:<50}{9:<50}{10:<50}'
+        f='{0:<10}{1:<10}{2:10}{3:<12}{4:<15}{5:<15}{6:<15}{7:<15}{8:<15}{9:<50}{10:<50}{11:<50}'
  	print f.format(
 		"cable_id",
+		"sibling",
 		"state",
 		"Suspected#",
 		"Ticket",
@@ -599,6 +700,7 @@ def list_state(what, list_filter):
  	SQL.execute('''
 	    SELECT 
 		cables.cid as cid,
+		cables.sibling as scid,
 		cables.ctime as ctime,
 		cables.length as length,
 		cables.SN as SN,
@@ -607,6 +709,8 @@ def list_state(what, list_filter):
 		cables.comment as comment,
 		cables.suspected as suspected,
 		cables.ticket as ticket,
+		cables.flabel as flabel,
+		cables.plabel as plabel,
 		cp1.flabel as cp1_flabel,
 		cp1.plabel as cp1_plabel,
 		cp2.flabel as cp2_flabel,
@@ -634,6 +738,7 @@ def list_state(what, list_filter):
 	for row in SQL.fetchall():
 	    print f.format(
 		    'c%s' % (row['cid']),
+		    'c%s' % (row['scid']) if row['scid'] else None,
 		    row['state'],
 		    row['suspected'],
 		    row['ticket'],
@@ -642,10 +747,9 @@ def list_state(what, list_filter):
 		    row['SN'],
 		    row['PN'],
 		    row['comment'],
-		    '%s <--> %s' % (row['cp1_flabel'], row['cp2_flabel']),
-		    '%s <--> %s' % (row['cp1_plabel'], row['cp2_plabel'])
+		    row['flabel'],
+		    row['plabel']
 		)
- 
 
     elif what == 'ports':
 	cid=None
@@ -1034,6 +1138,8 @@ def dump_help():
 	reads the output of ibnetdiscover, ibdiagnet2 and ibcv2
 	generates issues against errors found 
 	checks if any cable has been replaced (new SN) and will set that cable back to watch state
+	TODO: detect sibling cable swaps
+	TODO: detect new SN
 
     Environment Variables:
 	VERBOSE=[1-5]
@@ -1085,10 +1191,10 @@ else:
     elif CMD == 'comment':
 	for cid in resolve_cables(argv[3:]):
 	    comment_cable(cid, argv[2]) 
-#    elif CMD == 'sibling':
-#	source_cid = resolve_cable(argv[3]) 
-#	for cid in resolve_cables(argv[4:]):
-#	    add_sibling(cid, source_cid, argv[2]) 
+    elif CMD == 'sibling':
+	source_cid = resolve_cable(argv[3]) 
+	for cid in resolve_cables(argv[4:]):
+	    add_sibling(cid, source_cid['cid'], argv[2]) 
  
 	    #b = resolve_cable(list_filter)
 #    elif CMD == 'release':
