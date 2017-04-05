@@ -463,6 +463,21 @@ def ignore_issue(comment, iid):
 
     vlog(2, 'issue i%s will be ignored: %s' % (iid, comment))
 
+def honor_issue(comment, iid):
+    """ Honor issue """
+
+    SQL.execute('''
+	UPDATE
+	    issues 
+	SET
+	    ignore = 0
+	WHERE
+	    iid = ?
+	;''', (iid,));
+
+
+    vlog(2, 'issue i%s will be honored: %s' % (iid, comment))
+
 def comment_cable(cid, comment):
     """ Add comment to cable """
 
@@ -977,40 +992,43 @@ def dump_help():
   	{0} list ports {{c#|S{{guid}}/P{{port}}|cable port label}} 
 	    dump list of cable ports
 
-    add: {0} add {{issue description}} {{c#|S{{guid}}/P{{port}}|cable port label}}
+    add: {0} add {{issue description}} {{c#|S{{guid}}/P{{port}}|cable port label}}+
 	Note: Use GUID/Port syntax or cable id (c#) to avoid applying to wrong cable
 	add cable to bad node list 
 	open EV against node in SSG queue or Assign to SSG queue
 
-    sibling: {0} sibiling {{(bad cable id) c#}} {{c#|S{{guid}}/P{{port}}|cable port label}}
-	mark cable as sibling to bad cable
+    sibling: {0} sibiling {{(bad cable id) c#}} {{c#|S{{guid}}/P{{port}}|sibling cable port label}}+
+	mark cable as sibling to bad cable if sibling is in watch state
 	disables sibling cable in fabric
 
-    disable: {0} disable {{(bad cable id) c#}}
+    disable: {0} disable {{(bad cable id) c#}}+
 	disables cable in fabric
 
-    casg: {0} casg {{comment}} {{(bad cable id) c#}}
+    casg: {0} casg {{comment}} {{(bad cable id) c#}}+
 	disables cable in fabric
 	send extraview ticket to CASG
 
-    release: {0} release {{comment}} {{(bad cable id) c#}} 
+    release: {0} release {{comment}} {{(bad cable id) c#}}+
 	enable cable in fabric
 	set cable state to watch
 	close Extraview ticket
 
-    rejuvenate: {0} rejuvenate {{comment}} {{(bad cable id) c#}} 
+    rejuvenate: {0} rejuvenate {{comment}} {{(bad cable id) c#}}+
 	Note: only use this if the cable has been replaced and it was not autodetected
 	release cable
 	sets the suspected count back to 0
 	disassociate Extraview ticket from Cable
 
-    comment: {0} comment {{comment}} {{(bad cable id) c#}}  
+    comment: {0} comment {{comment}} {{(bad cable id) c#}}+
 	add comment to bad cable's extraview ticket 
 
-    ignore: {0} ignore {{comment}} {{(issue id) i#}} 
+    ignore: {0} ignore {{comment}} {{(issue id) i#}}+
 	Note: only use this in special cases for issues that can not be fixed
 	release cable
-	ignore issue with this cable until state is change manually
+	ignore issue with assigned cable until honor requested
+
+    honor: {0} honor {{comment}} {{(issue id) i#}}+
+	honor issue (removes ignore status)
  
     parse: {0} parse {{path to ib dumps dir}}
 	reads the output of ibnetdiscover, ibdiagnet2 and ibcv2
@@ -1061,9 +1079,16 @@ else:
     elif CMD == 'ignore':
 	for iid in resolve_issues(argv[3:]):
 	    ignore_issue(argv[2], iid)
+    elif CMD == 'honor':
+	for iid in resolve_issues(argv[3:]):
+	    honor_issue(argv[2], iid) 
     elif CMD == 'comment':
 	for cid in resolve_cables(argv[3:]):
 	    comment_cable(cid, argv[2]) 
+#    elif CMD == 'sibling':
+#	source_cid = resolve_cable(argv[3]) 
+#	for cid in resolve_cables(argv[4:]):
+#	    add_sibling(cid, source_cid, argv[2]) 
  
 	    #b = resolve_cable(list_filter)
 #    elif CMD == 'release':
