@@ -169,7 +169,7 @@ def add_sibling(cid, source_cid, comment):
     SQL.execute('''
 	SELECT 
 	    cables.cid,
-	    cables.state,
+	    cables.state as state,
 	    cables.ticket,
 	    cables.flabel,
 	    cp1.guid as cp1_guid,
@@ -198,10 +198,10 @@ def add_sibling(cid, source_cid, comment):
 
     for row in SQL.fetchall():
 	if row['state'] != 'watch':
-	    vlog(3, 'setting sibling cable c%s against cable c%s' % (cid, source_cid))
-	else:
-	    vlog(3, 'ignoring sibling cable c%s from state %s against c%s' % (cid, row['state'],source_cid))
-	    continue
+	    vlog(3, 'ignoring sibling cable c%s from state %s against c%s. only cables in watch state can be a sibling.' % (cid, row['state'],source_cid))
+	    return  
+
+	vlog(3, 'setting sibling cable c%s in %s against cable c%s' % (cid, row['state'], source_cid))
 
 	#TODO: disable cable in fabric
 
@@ -694,7 +694,7 @@ def list_state(what, list_filter):
 		"Serial_Number",
 		"Product_Number",
 		"Comment",
-		"Firmware Label",
+		"Firmware Label (node_desc)",
 		"Physical Label"
 	    )            
  	SQL.execute('''
