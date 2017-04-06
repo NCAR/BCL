@@ -630,6 +630,49 @@ def comment_cable(cid, comment):
 
     SQL.execute('COMMIT;')
 
+def disable_cable(cid, comment):
+    """ Disable cable """
+
+    ticket = None
+    flabel = None
+    sibling = None
+
+    SQL.execute('''
+	SELECT 
+	    cables.cid,
+	    cables.state,
+	    cables.suspected,
+	    cables.ticket,
+	    cables.flabel as flabel,
+	    cables.sibling as sibling,
+	    cp1.guid as cp1_guid,
+	    cp1.port as cp1_port,
+ 	    cp2.guid as cp2_guid,
+	    cp2.port as cp2_port
+	FROM 
+	    cables
+
+	INNER JOIN
+	    cable_ports as cp1
+	ON
+	    cables.cid = ? and
+	    cables.cid = cp1.cid
+
+	LEFT OUTER JOIN
+	    cable_ports as cp2
+	ON
+	    cables.cid = cp2.cid and
+	    cp1.cpid != cp2.cpid
+             
+	LIMIT 1
+    ''',(
+	cid,
+    ))
+
+    for row in SQL.fetchall():
+	#if row['state'] == 'watch':
+	pass
+
 def release_cable(cid, comment, full = False):
     """ Release cable """
 
@@ -1154,6 +1197,7 @@ def run_parse(dump_dir):
 	    timestamp
 	)
 
+    SQL.execute('VACUUM;')
 
     unlock()
 
@@ -1182,8 +1226,9 @@ def dump_help():
 	mark cable as sibling to bad cable if sibling is in watch state
 	disables sibling cable in fabric
 
-    disable: {0} disable {{(bad cable id) c#}}+
+    disable: {0} disable 'comment' {{(bad cable id) c#}}+
 	disables cable in fabric
+	add cable to bad cable list (if not one already)
 
     casg: {0} casg {{comment}} {{(bad cable id) c#}}+
 	disables cable in fabric
@@ -1207,11 +1252,10 @@ def dump_help():
 
     ignore: {0} ignore {{comment}} {{(issue id) i#}}+
 	Note: only use this in special cases for issues that can not be fixed
-	release cable
 	ignore issue with assigned cable until honor requested
 
     honor: {0} honor {{comment}} {{(issue id) i#}}+
-	honor issue (removes ignore status)
+	removes ignore status of issue
  
     parse: {0} parse {{path to ib dumps dir}}
 	reads the output of ibnetdiscover, ibdiagnet2 and ibcv2
@@ -1252,6 +1296,9 @@ else:
 	if len(argv) == 4:
 	    lfilter = argv[3]
 	list_state(argv[2], lfilter)  
+    elif CMD == 'disable':
+	for cid in resolve_cables(argv[3:]):
+	    disable_cable(cid, argv[2])
     elif CMD == 'add':
 	for cid in resolve_cables(argv[3:]):
 	    add_issue('Manual Entry', cid, argv[2], None, 'admin', int(time.time()))
