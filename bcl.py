@@ -633,10 +633,6 @@ def comment_cable(cid, comment):
 def disable_cable(cid, comment):
     """ Disable cable """
 
-    ticket = None
-    flabel = None
-    sibling = None
-
     SQL.execute('''
 	SELECT 
 	    cables.cid,
@@ -644,7 +640,6 @@ def disable_cable(cid, comment):
 	    cables.suspected,
 	    cables.ticket,
 	    cables.flabel as flabel,
-	    cables.sibling as sibling,
 	    cp1.guid as cp1_guid,
 	    cp1.port as cp1_port,
  	    cp2.guid as cp2_guid,
@@ -670,8 +665,38 @@ def disable_cable(cid, comment):
     ))
 
     for row in SQL.fetchall():
-	#if row['state'] == 'watch':
-	pass
+	if row['state'] == 'silbing':
+	    vlog(1, 'sibling cable already disabled. ignoring request to disable c%s.' % (cid))
+	    return
+	elif row['state'] == 'disabled':
+ 	    vlog(1, 'cable already disabled. ignoring request to disable c%s again.' % (cid))
+	    return                    
+ 	elif row['state'] == 'watch':
+ 	    vlog(3, 'cable in watch state. adding c%s to bad cable list.' % (cid))
+	    add_issue('Manual Entry', cid, comment, 'Disable cable requested. Auto adding cable to bad cables.', 'admin', int(time.time()))
+
+	vlog(3, 'disabling cable c%s.' % (cid))
+
+ 	SQL.execute('BEGIN;')
+	SQL.execute('''
+	    UPDATE
+		cables 
+	    SET
+		state = 'disabled',
+		comment = ?
+	    WHERE
+		cid = ?
+	    ;''', (
+		comment,
+		cid
+	));
+	SQL.execute('COMMIT;')
+
+	#TODO: disable cable in fabric 
+
+	if row['ticket']:
+	    EV.add_resolver_comment(row['ticket'], 'Cable %s disabled.' % (row['flabel']))
+	    vlog(3, 'Update Extraview Ticket %s for c%s was disabled' % (row['ticket'], cid))
 
 def release_cable(cid, comment, full = False):
     """ Release cable """
