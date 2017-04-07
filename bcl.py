@@ -12,6 +12,7 @@ import siblings
 import cluster_info
 import file_locking
 import ib_diagnostics
+import ib_mgt
 import pprint
 import time
 import datetime
@@ -95,6 +96,8 @@ def initialize_db():
 	    port integer,
 	    --Name (usually hostname)
 	    name text,
+	    --if port is an HCA
+	    hca BOOLEAN,
 	    FOREIGN KEY (cid) REFERENCES cables(cid)
 	);
 
@@ -630,8 +633,8 @@ def comment_cable(cid, comment):
 
     SQL.execute('COMMIT;')
 
-def disable_cable(cid, comment):
-    """ Disable cable """
+def disable_cable_ports(cid):
+    """ Disables cable in fabric """
 
     SQL.execute('''
 	SELECT 
@@ -659,6 +662,37 @@ def disable_cable(cid, comment):
 	    cables.cid = cp2.cid and
 	    cp1.cpid != cp2.cpid
              
+	LIMIT 1
+    ''',(
+	cid,
+    ))
+
+    for row in SQL.fetchall(): 
+	if not row['state'] in  ('silbing', 'disabled'):
+	    vlog(1, 'refusing request to disable c%s. cable state must be disabled or sibling.' % (cid, row['state']))
+	    return
+ 
+
+    #ib_mgt.disable_port(int(row['cp1_guid']), int(row['cp1_port']))
+
+    print ib_mgt.exec_opensm_to_string('uptime')
+    print ib_mgt.disable_port(int(row['cp1_guid']), int(row['cp1_port']))
+ 
+
+def disable_cable(cid, comment):
+    """ Disable cable """
+
+    SQL.execute('''
+	SELECT 
+	    cables.cid,
+	    cables.state,
+	    cables.suspected,
+	    cables.ticket,
+	    cables.flabel as flabel
+	FROM 
+	    cables
+        WHERE
+	    cables.cid = ?
 	LIMIT 1
     ''',(
 	cid,
@@ -692,7 +726,7 @@ def disable_cable(cid, comment):
 	));
 	SQL.execute('COMMIT;')
 
-	#TODO: disable cable in fabric 
+	disable_cable_ports(cid)
 
 	if row['ticket']:
 	    EV.add_resolver_comment(row['ticket'], 'Cable %s disabled.' % (row['flabel']))
@@ -903,12 +937,13 @@ def list_state(what, list_filter):
 		vlog(1, 'unable to resolve %s' % list_filter)
 		return
 
-        f='{0:<10}{1:<10}{2:<25}{3:<7}{4:<50}{5:<50}{6:<50}'
+        f='{0:<10}{1:<10}{2:<25}{3:<7}{4:<7}{5:<50}{6:<50}{7:<50}'
  	print f.format(
 		"cable_id",
 		"port_id",
 		"guid",
 		"port",
+		"HCA",
 		"name",
 		"Firmware Label",
 		"Physical Label"
@@ -922,6 +957,7 @@ def list_state(what, list_filter):
 		flabel,
 		guid,
 		port,
+		hca,
 		name
 	    FROM 
 		cable_ports 
@@ -942,6 +978,7 @@ def list_state(what, list_filter):
 		    'p%s' % row['cpid'],
 		    hex(int(row['guid'])),
 		    row['port'],
+		    'True' if row['hca'] else 'False',
 		    row['name'],
 		    row['flabel'],
 		    row['plabel']
@@ -1097,16 +1134,18 @@ def run_parse(dump_dir):
 			guid,
 			name,
 			port,
+			hca,
 			plabel,
 			flabel
 		    ) VALUES (
-			?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?
 		    );
 		''', (
 		    cid,
 		    convert_guid_intstr(port['guid']),
 		    port['name'],
 		    int(port['port']),
+		    port['type'] == "CA",
 		    ib_diagnostics.port_pretty(port),
 		    ib_diagnostics.port_pretty(port), 
 		))
