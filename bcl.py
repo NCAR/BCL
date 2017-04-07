@@ -675,8 +675,122 @@ def enable_cable_ports(cid):
     for row in SQL.fetchall(): 
 	ib_mgt.enable_port(int(row['guid']), int(row['port']))
 
+def send_casg(cid, comment):
+    """ disable cable and send ticket to CASG """
+    disable_cable(cid, comment)
+
+    tid = None
+    length = None
+    SN = None
+    PN = None
+    suspected = None
+    plabel = None
+    flabel = None
+    siblings = []
+
+    SQL.execute('''
+	SELECT 
+	    ticket,
+	    length,
+	    SN,
+	    PN,
+	    suspected,
+	    plabel,
+	    flabel
+	FROM 
+	    cables
+        WHERE
+	    cables.cid = ?
+	LIMIT 1
+    ''',(
+	cid,
+    ))
+
+    for row in SQL.fetchall(): 
+	tid = row['ticket']
+	length = row['length']
+	SN = row['SN']
+	PN = row['PN']
+	suspected = row['suspected']
+	plabel = row['plabel']
+	flabel = row['flabel']
+
+    if not tid:
+	vlog(1, 'Cable c%s does not have an associated Extraview Ticket. Refusing to send non-existant ticket to casg' % (cid))
+	return False
+
+    #find all siblings
+    SQL.execute('''
+	SELECT 
+	    ticket,
+	    length,
+	    SN,
+	    PN,
+	    plabel,
+	    flabel
+	FROM 
+	    cables
+        WHERE
+	    cables.sibling = ?
+	LIMIT 1
+    ''',(
+	cid,
+    ))
+
+    for row in SQL.fetchall(): 
+	siblings.append( '''
+	    Physical Cable Label: %s
+	    Software Cable Label: %s
+	    Length: %s
+	    Serial: %s
+	    Product Number: %s
+	    Ticket: %s 
+	''' % (
+	    row['plabel'],
+	    row['flabel'],
+	    row['length'],
+	    row['SN'],
+	    row['PN'],
+	    row['ticket']
+	))
+
+    #EV.assign_group(tid, 'casg', None, {
+    EV.assign_group(tid, 'ssg', 'nate', {
+	'COMMENTS':	'''
+	    --- TEST TICKET: PLEASE RETURN TO SSG ---
+	    CASG,
+
+	    The follow cable has been marked for repairs and has been disabled.
+	    This cable has had %s events that required repair to date.
+
+	    Physical Cable Label: %s
+	    Software Cable Label: %s
+	    Length: %s
+	    Serial: %s
+	    Product Number: %s
+
+	    %s
+
+	    The following cables have also been shutdown for this repair work:
+	    %s
+
+	    Please verify that the cable ports are dark before repairing cable or return ticket noting the cables are not disabled.
+	    If there are any questions or issues, please return this ticket to SSG with details.
+	''' % (
+		suspected,
+		plabel,
+		flabel,
+		length,
+		SN,
+		PN,
+		comment,
+		"\n\n".join(siblings) if siblings  else 'No siblings cables at this time.'
+	)
+    });
+ 
+
 def disable_cable(cid, comment):
-    """ Disable cable """
+    """ disable cable """
 
     SQL.execute('''
 	SELECT 
@@ -1359,6 +1473,9 @@ else:
     elif CMD == 'disable':
 	for cid in resolve_cables(argv[3:]):
 	    disable_cable(cid, argv[2])
+    elif CMD == 'casg':
+	for cid in resolve_cables(argv[3:]):
+	    send_casg(cid, argv[2]) 
     elif CMD == 'add':
 	for cid in resolve_cables(argv[3:]):
 	    add_issue('Manual Entry', cid, argv[2], None, 'admin', int(time.time()))
