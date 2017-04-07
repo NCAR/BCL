@@ -638,45 +638,30 @@ def disable_cable_ports(cid):
 
     SQL.execute('''
 	SELECT 
-	    cables.cid,
-	    cables.state,
-	    cables.suspected,
-	    cables.ticket,
-	    cables.flabel as flabel,
-	    cp1.guid as cp1_guid,
-	    cp1.port as cp1_port,
- 	    cp2.guid as cp2_guid,
-	    cp2.port as cp2_port
+            cpid,
+	    guid,
+	    port,
+	    hca
 	FROM 
-	    cables
-
-	INNER JOIN
-	    cable_ports as cp1
-	ON
-	    cables.cid = ? and
-	    cables.cid = cp1.cid
-
-	LEFT OUTER JOIN
-	    cable_ports as cp2
-	ON
-	    cables.cid = cp2.cid and
-	    cp1.cpid != cp2.cpid
-             
-	LIMIT 1
+	    cable_ports 
+	WHERE
+	    cid = ?
     ''',(
 	cid,
     ))
 
     for row in SQL.fetchall(): 
-	if not row['state'] in  ('silbing', 'disabled'):
-	    vlog(1, 'refusing request to disable c%s. cable state must be disabled or sibling.' % (cid, row['state']))
-	    return
+	if row['hca']:
+	    vlog(1, 'ignoring request to disable HCA p%s.' % (row['cpid']))
+	    continue
+
+	if ib_mgt.disable_port(int(row['guid']), int(row['port'])):
+	    pass
  
 
     #ib_mgt.disable_port(int(row['cp1_guid']), int(row['cp1_port']))
-
-    print ib_mgt.exec_opensm_to_string('uptime')
-    print ib_mgt.disable_port(int(row['cp1_guid']), int(row['cp1_port']))
+    #print ib_mgt.exec_opensm_to_string('uptime')
+    #print ib_mgt.disable_port(int(row['cp1_guid']), int(row['cp1_port']))
  
 
 def disable_cable(cid, comment):
@@ -944,7 +929,7 @@ def list_state(what, list_filter):
 		"guid",
 		"port",
 		"HCA",
-		"name",
+		"name (node_desc)",
 		"Firmware Label",
 		"Physical Label"
 	    ) 
