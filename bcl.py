@@ -418,7 +418,7 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 
 	    vlog(3, 'Changed cable %s to suspect state %s times' % (cid, suspected))
 
-	if not DISABLE_TICKET:
+	if not DISABLE_TICKETS:
 	    EV.add_resolver_comment(tid, 'Bad Cable Issue:\nType: %s\nIssue: %s\nSource: %s\n%s' % (
 		issue_type, 
 		issue, 
