@@ -206,7 +206,7 @@ def add_sibling(cid, source_cid, comment):
 
 	vlog(3, 'setting sibling cable c%s in %s against cable c%s' % (cid, row['state'], source_cid))
 
-	#TODO: disable cable in fabric
+	disable_cable_ports(cid)
 
 	SQL.execute('BEGIN;')
 	SQL.execute('''
@@ -655,14 +655,25 @@ def disable_cable_ports(cid):
 	    vlog(1, 'ignoring request to disable HCA p%s.' % (row['cpid']))
 	    continue
 
-	if ib_mgt.disable_port(int(row['guid']), int(row['port'])):
-	    pass
- 
+	ib_mgt.disable_port(int(row['guid']), int(row['port']))
 
-    #ib_mgt.disable_port(int(row['cp1_guid']), int(row['cp1_port']))
-    #print ib_mgt.exec_opensm_to_string('uptime')
-    #print ib_mgt.disable_port(int(row['cp1_guid']), int(row['cp1_port']))
- 
+def enable_cable_ports(cid):
+    """ Enables cable in fabric """
+
+    SQL.execute('''
+	SELECT 
+	    guid,
+	    port
+	FROM 
+	    cable_ports 
+	WHERE
+	    cid = ?
+    ''',(
+	cid,
+    ))
+
+    for row in SQL.fetchall(): 
+	ib_mgt.enable_port(int(row['guid']), int(row['port']))
 
 def disable_cable(cid, comment):
     """ Disable cable """
@@ -763,7 +774,7 @@ def release_cable(cid, comment, full = False):
 
 	vlog(3, 'release cable c%s from state %s' % (cid, row['state']))
 
-	#TODO: enable cable in fabric
+        enable_cable_ports(cid)
 
 	SQL.execute('BEGIN;')
 	SQL.execute('''
