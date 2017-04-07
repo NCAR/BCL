@@ -746,7 +746,7 @@ def send_casg(cid, comment):
 	    Product Number: %s
 	    Ticket: %s 
 	''' % (
-	    row['plabel'],
+	    row['plabel'] if row['plabel'] else row['flabel'], 
 	    row['flabel'],
 	    row['length'],
 	    row['SN'],
@@ -779,7 +779,7 @@ def send_casg(cid, comment):
 		If there are any questions or issues, please return this ticket to SSG with details.
 	    ''' % (
 		    suspected,
-		    plabel,
+		    plabel if plabel else flabel,
 		    flabel,
 		    length,
 		    SN,
@@ -1028,9 +1028,9 @@ def list_state(what, list_filter):
 		    row['suspected'],
 		    row['ticket'],
 		    row['ctime'],
-		    row['length'],
-		    row['SN'],
-		    row['PN'],
+		    row['length'] if row['length'] else None,
+		    row['SN'] if row['SN'] else None,
+		    row['PN'] if row['PN'] else None,
 		    row['comment'],
 		    row['flabel'],
 		    row['plabel']
