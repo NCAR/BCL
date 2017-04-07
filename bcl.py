@@ -1303,6 +1303,7 @@ def run_parse(dump_dir):
 
     #add every known cable to database
     #slow but keeps sane list of all cables forever for issue tracking
+    known_cables=[] #track every that is found
     for port in ports:
 	port1 = port
 	port2 = port['connection']
@@ -1353,7 +1354,67 @@ def run_parse(dump_dir):
 	if port2:
 	    port2['cable_id'] = cid
 
+	known_cables.append(cid)
+
     SQL.execute('COMMIT;')
+
+    #Find any cables that are known but not parsed this time around (aka went dark)
+    #ignore any cables in a disabled state
+    missing_cables = []
+    SQL.execute('''
+	    SELECT 
+		cid
+	    FROM 
+		cables
+	    WHERE
+		state != 'removed' or
+		state != 'disabled' or
+		state != 'sibling' or
+		sibling IS NOT NULL
+	''')
+    for row in SQL.fetchall():
+	if not row['cid'] in known_cables:
+	    missing_cables.append(int(row['cid']))
+
+    for cid in missing_cables:
+	#Verify missing cables actually matter, ignore single port cables (aka unconnected)
+	SQL.execute('''
+	    SELECT 
+		cables.cid,
+		cp1.cpid as cp1_cpid,
+		cp2.cpid as cp2_cpid
+	    FROM 
+		cables
+
+	    INNER JOIN
+		cable_ports as cp1
+	    ON
+		cables.cid = ? and
+		cables.cid = cp1.cid
+
+	    LEFT OUTER JOIN
+		cable_ports as cp2
+	    ON
+		cables.cid = cp2.cid and
+		cp1.cpid != cp2.cpid
+		 
+	    LIMIT 1 
+	    ''', (
+		cid,
+	    ))
+	for row in SQL.fetchall():
+	    if row['cp1_cpid'] and row['cp2_cpid']:
+		#cable went dark
+		add_issue(
+		    'missing cable',
+		    cid,
+		    'Cable went missing',
+		    None,
+		    'ibnetdiscover -p',
+		    timestamp
+		)              
+	    else:
+		vlog(3, 'Ignoring missing single port Cable %s' % (cid))
 
     for issue in issues:
 	cid = None
