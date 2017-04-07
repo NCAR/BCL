@@ -2,18 +2,11 @@
 from sys import path, argv
 path.append("/ssg/bin/python_modules/") 
 from nlog import vlog,die_now
-from ClusterShell.NodeSet import NodeSet
-from ClusterShell.Task import task_self
 import re
 import os
 import csv
 import cluster_info
-import traceback
 import math
-
-#def exec_opensm_to_string ( cmd ):
-#    """ Runs cmd on openSM host and places Return Value, STDOUT, STDERR into returned list  """
-#    return exec_to_string (['/usr/bin/ssh','-n','-o','BatchMode=yes', args.sm, cmd] ) 
 
 def parse_port ( label ):
     """ Parse the name of a IB port 
@@ -282,6 +275,7 @@ def parse_ibnetdiscover_cables ( ports, contents ):
 	else:
 	    if line != "":
 		vlog(3, 'Parse fail: %s' % line )
+
 def msg_port_pretty_long ( port, why ): 
     """ msg port label with helpful info"""
     vlog(1,'%s: %s SPEED=%s LID=%s GUID=%s SN=%s PN=%s' % (
@@ -666,7 +660,6 @@ def resolve_update_port(ports, port):
     """ Resolves out port from ports list and update port dictionary with searched port values """
     if not port:
 	vlog(4, 'unable to resolve and update none port')
-	traceback.print_stack()
 	return None
 
     if int(port['port']) == 0:
