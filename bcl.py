@@ -634,7 +634,7 @@ def comment_cable(cid, comment):
     SQL.execute('COMMIT;')
 
 def disable_cable_ports(cid):
-    """ Disables cable in fabric """
+    """ Disables cable ports in fabric """
 
     SQL.execute('''
 	SELECT 
@@ -658,7 +658,7 @@ def disable_cable_ports(cid):
 	ib_mgt.disable_port(int(row['guid']), int(row['port']))
 
 def enable_cable_ports(cid):
-    """ Enables cable in fabric """
+    """ Enables cable ports in fabric """
 
     SQL.execute('''
 	SELECT 
