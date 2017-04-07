@@ -237,11 +237,11 @@ def add_sibling(cid, source_cid, comment):
 		row['Ticket'],
 	    )
 
-	if row['ticket']:
+	if row['ticket'] and not DISABLE_TICKETS:
 	    vlog(3, 'updated Extraview Ticket %s for c%s' % (row['ticket'], cid))
 	    EV.add_resolver_comment(row['ticket'], msg)
 
-	if source_cid_ticket:
+	if source_cid_ticket and not DISABLE_TICKETS:
 	    EV.add_resolver_comment(source_cid_ticket, msg)
             vlog(3, 'updated Extraview Ticket %s for source c%s' % (source_cid_ticket, source_cid))
 
@@ -369,7 +369,7 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
              
 	if row['state'] == 'watch' or row['state'] == 'sibling':
 	    #cable was only being watched. send it to suspect
-	    if tid is None: 
+	    if tid is None and not DISABLE_TICKETS: 
 		tid = EV.create( 
 		    'ssgev',
 		    'ssg',
@@ -387,7 +387,7 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 			'HELP_HOSTNAME_OTHER': cname
 		})
 		vlog(3, 'Opened Extraview Ticket %s for bad cable %s' % (tid, cid))
-	    else:
+	    elif not DISABLE_TICKETS: 
 		EV.assign_group(tid, 'ssg', 'nate', {
 		    'COMMENTS':	'''
 			Ticket has been reopened for repeat offender bad cable.
@@ -418,12 +418,13 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 
 	    vlog(3, 'Changed cable %s to suspect state %s times' % (cid, suspected))
 
-	EV.add_resolver_comment(tid, 'Bad Cable Issue:\nType: %s\nIssue: %s\nSource: %s\n%s' % (
-	    issue_type, 
-	    issue, 
-	    source,
-	    raw
-	))
+	if not DISABLE_TICKET:
+	    EV.add_resolver_comment(tid, 'Bad Cable Issue:\nType: %s\nIssue: %s\nSource: %s\n%s' % (
+		issue_type, 
+		issue, 
+		source,
+		raw
+	    ))
 
     SQL.execute('COMMIT;')
 
@@ -543,7 +544,6 @@ def resolve_cables(user_input):
 
 def resolve_issues(user_input):
     """ Resolve user inputed set of strings into issue id list """
-    #TODO: should we waste time to resolve IID number is valid?
 
     iids = []
 
@@ -627,7 +627,7 @@ def comment_cable(cid, comment):
 		cid
 	));
 
-	if row['ticket']:
+	if row['ticket'] and not DISABLE_TICKETS:
 	    EV.add_resolver_comment(row['ticket'], 'Bad Cable Comment:\n%s' % comment)
 	    vlog(3, 'Updated Extraview Ticket %s for c%s with comment: %s' % (row['ticket'], cid, comment))
 
@@ -755,39 +755,40 @@ def send_casg(cid, comment):
 	))
 
     #EV.assign_group(tid, 'casg', None, {
-    EV.assign_group(tid, 'ssg', 'nate', {
-	'COMMENTS':	'''
-	    --- TEST TICKET: PLEASE RETURN TO SSG ---
-	    CASG,
+    if not DISABLE_TICKETS:
+	EV.assign_group(tid, 'ssg', 'nate', {
+	    'COMMENTS':	'''
+		--- TEST TICKET: PLEASE RETURN TO SSG ---
+		CASG,
 
-	    The follow cable has been marked for repairs and has been disabled.
-	    This cable has had %s events that required repair to date.
+		The follow cable has been marked for repairs and has been disabled.
+		This cable has had %s events that required repair to date.
 
-	    Physical Cable Label: %s
-	    Software Cable Label: %s
-	    Length: %s
-	    Serial: %s
-	    Product Number: %s
+		Physical Cable Label: %s
+		Software Cable Label: %s
+		Length: %s
+		Serial: %s
+		Product Number: %s
 
-	    %s
+		%s
 
-	    The following cables have also been shutdown for this repair work:
-	    %s
+		The following cables have also been shutdown for this repair work:
+		%s
 
-	    Please verify that the cable ports are dark before repairing cable or return ticket noting the cables are not disabled.
-	    If there are any questions or issues, please return this ticket to SSG with details.
-	''' % (
-		suspected,
-		plabel,
-		flabel,
-		length,
-		SN,
-		PN,
-		comment,
-		"\n\n".join(siblings) if siblings  else 'No siblings cables at this time.'
-	)
-    });
- 
+		Please verify that the cable ports are dark before repairing cable or return ticket noting the cables are not disabled.
+		If there are any questions or issues, please return this ticket to SSG with details.
+	    ''' % (
+		    suspected,
+		    plabel,
+		    flabel,
+		    length,
+		    SN,
+		    PN,
+		    comment,
+		    "\n\n".join(siblings) if siblings  else 'No siblings cables at this time.'
+	    )
+	});
+     
 
 def disable_cable(cid, comment):
     """ disable cable """
@@ -838,7 +839,7 @@ def disable_cable(cid, comment):
 
 	disable_cable_ports(cid)
 
-	if row['ticket']:
+	if row['ticket'] and not DISABLE_TICKETS:
 	    EV.add_resolver_comment(row['ticket'], 'Cable %s disabled.' % (row['flabel']))
 	    vlog(3, 'Update Extraview Ticket %s for c%s was disabled' % (row['ticket'], cid))
 
@@ -932,7 +933,7 @@ def release_cable(cid, comment, full = False):
 	vlog(3, 'release sibling cable c%s of c%s' % (row['cid'], cid))
 	release_cable(row['cid'], 'Releasing sibling of %s' % (flabel))
 
-	if ticket:
+	if ticket and not DISABLE_TICKETS:
 	    EV.add_resolver_comment(ticket, 'Sibling cable %s enabled and released.' % row['flabel'])
 
     #get siblings ticket and tell them sibling was released
@@ -953,11 +954,11 @@ def release_cable(cid, comment, full = False):
 	for row in SQL.fetchall():
 	    vlog(3, 'notify cable c%s of sibling release of c%s' % (sibling, cid))
 
-	    if row['ticket']:
+	    if row['ticket'] and not DISABLE_TICKETS:
 		EV.add_resolver_comment(row['ticket'], 'Sibling cable %s enabled and released.' % (flabel))
 		vlog(3, 'Update Extraview Ticket %s for c%s that c%s was released' % (row['ticket'], sibling, cid))
 
-    if ticket:
+    if ticket and not DISABLE_TICKETS:
 	EV.close(ticket, 'Released Bad Cable\nBad Cable Comment:\n%s' % comment)
 	vlog(3, 'Closed Extraview Ticket %s for c%s' % (ticket, cid))
 
@@ -1438,11 +1439,15 @@ def dump_help():
 	TODO: detect sibling cable swaps
 	TODO: detect new SN
 
-    Environment Variables:
-	VERBOSE=[1-5]
+    Optional Environment Variables:
+	VERBOSE={{1-5 default=3}}
 	    1: lowest
 	    5: highest
 	    
+	DISABLE_TICKETS={{YES|NO default=NO}}
+	    YES: disable creating and updating tickets (may cause extra errors)
+	    NO: create tickets
+ 
     """.format(argv[0]))
 
 if not cluster_info.is_mgr():
@@ -1452,8 +1457,13 @@ BAD_CABLE_DB='/etc/ncar_bad_cable_list.sqlite'
 """ const string: Path to JSON database for bad cable list """
 
 LOCK = None
+DISABLE_TICKETS=False
+EV = None
 
-EV = extraview_cli.open_extraview()
+if 'DISABLE_TICKETS' in os.environ and os.environ['DISABLE_TICKETS'] == "YES":
+    DISABLE_TICKETS=True
+else:
+    EV = extraview_cli.open_extraview()
 
 initialize_db()
 
@@ -1501,31 +1511,6 @@ else:
 		add_sibling(cid, source_cid['cid'], argv[2]) 
     else:
 	dump_help() 
-
-	    #b = resolve_cable(list_filter)
-#    elif CMD == 'release':
-#	del_nodes(NODES, argv[3]) 
-#    elif CMD == 'comment':
-#	comment_nodes(NODES, argv[3])
-#    elif CMD == 'attach':
-#	attach_nodes(NODES, argv[3].split(','))
-#    elif CMD == 'detach':
-#	detach_nodes(NODES, argv[3].split(','))
-#    elif CMD == 'hardware':
-#	mark_hardware(NODES, argv[3])
-#    elif CMD == 'casg':
-#	mark_casg(NODES, argv[3]) 
-#    else:
-#	dump_help() 
-
-#dump_help() 
-
-
-
-
-
-
-
 
 release_db()
 
