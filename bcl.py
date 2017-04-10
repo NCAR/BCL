@@ -834,8 +834,45 @@ def send_casg(cid, comment):
 def enable_cable(cid, comment):
     """ enable cable """
 
-    vlog(3, 'enabling cable c%s: %s' % (cid, comment))
-    enable_cable_ports(cid)
+    SQL.execute('''
+	SELECT 
+	    cables.cid,
+	    cables.flabel,
+	    cables.state,
+	    cables.ticket
+	FROM 
+	    cables
+        WHERE
+	    cables.cid = ?
+	LIMIT 1
+    ''',(
+	cid,
+    ))
+
+    for row in SQL.fetchall():
+	vlog(3, 'enabling cable c%s: %s' % (cid, comment))
+	enable_cable_ports(cid)
+
+	if row['state'] == 'disabled':
+	    vlog(3, 'Disabled cable c%s returned to suspect state' % (cid))
+	    SQL.execute('BEGIN;')
+	    SQL.execute('''
+		UPDATE
+		    cables 
+		SET
+		    state = 'suspect',
+		    comment = ?
+		WHERE
+		    cid = ?
+		;''', (
+		    comment,
+		    cid
+	    ));
+	    SQL.execute('COMMIT;')
+
+ 	if row['ticket'] and not DISABLE_TICKETS:
+	    EV.add_resolver_comment(row['ticket'], 'Cable %s enabled.' % (row['flabel']))
+	    vlog(3, 'Update Extraview Ticket %s for c%s was enabled' % (row['ticket'], cid))
  
 def disable_cable(cid, comment):
     """ disable cable """
@@ -1672,6 +1709,7 @@ def dump_help():
     enable: {0} enable 'comment' {{(cable id) c#}}+
 	Note: Only use this command for debugging cable issues
 	enables cable in fabric
+	puts a cable in disabled state back into suspect state (use release to set cable state to watch)
  
     casg: {0} casg {{comment}} {{(bad cable id) c#}}+
 	disables cable in fabric
