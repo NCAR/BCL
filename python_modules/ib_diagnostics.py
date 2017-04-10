@@ -288,19 +288,33 @@ def msg_port_pretty_long ( port, why ):
 	    port['PN'] if 'PN' in port else '',
 	)
     )
+
+def port_name_pretty ( port ):
+    """ return pretty port name """
+    if not port:
+	return 'None'
+    if not isinstance(port, dict):
+	name = port
+    else:
+	name = port['name']
+
+    name = re.sub(r'\s*SwitchX\s*-\s*Mellanox\ Technologies', '', name)
+    return name
+
 def port_pretty ( port ):
     """ return pretty port label """
     if not port:
 	return 'None'
-    if port['spine']: #spine
-	return '%s/S%s/P%s' % (port['name'], port['spine'], port['port'])
-    if port['leaf']: #port on orca
-	return '%s/L%s/P%s' % (port['name'], port['leaf'], port['port']) 
-    if port['hca']: #hca on node
-	return '%s/U%s/P%s' % (port['name'], port['hca'], port['port'])
 
-    name = port['name']
-    name = re.sub(r'\s*SwitchX\s*-\s*Mellanox\ Technologies', '', name)
+    name = port_name_pretty(port['name'])
+
+    if port['spine']: #spine
+	return '%s/S%s/P%s' % (name, port['spine'], port['port'])
+    if port['leaf']: #port on orca
+	return '%s/L%s/P%s' % (name, port['leaf'], port['port']) 
+    if port['hca']: #hca on node
+	return '%s/U%s/P%s' % (name, port['hca'], port['port'])
+
     return '%s/P%s' % (name, port['port']) #tor port
 
 def find_underperforming_cables ( ports, issues, speed, width = "4x"):
