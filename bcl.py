@@ -1152,6 +1152,56 @@ def list_state(what, list_filter):
 		    row['issue'],
 		    row['raw'].replace("\n", "\\n") if row['raw'] else None
 		)
+    elif what == 'overrides':
+        f='{0:<10}{1:<50}{2:<25}{3:<7}{4:<25}{5:<25}{6:<7}{7:<25}'
+ 	print f.format(
+		"id",
+		"Physical Label",
+		"port1 Firmware Label",
+		"port1#",
+		"port1 Physical Label",
+ 		"port2 Firmware Label",
+		"port2#",
+		"port2 Physical Label"
+	    ) 
+
+ 	SQL.execute('''
+	    SELECT 
+		cl.clid as clid,
+		cl.new_plabel as cable_plabel,
+		p1.flabel as p1_flabel,
+		p1.port as p1_port,
+		p1.new_plabel as p1_new_plabel,
+		p2.flabel as p2_flabel,
+		p2.port as p2_port,
+		p2.new_plabel as p2_new_plabel
+	    FROM 
+		cable_labels as cl
+	    INNER JOIN
+		cable_port_labels as p1
+	    ON
+		cl.clid = p1.clid
+	    INNER JOIN
+		cable_port_labels as p2
+	    ON
+		cl.clid = p2.clid and
+		p1.cplid  != p2.cplid 
+	    GROUP BY cl.clid
+	    ORDER BY cl.clid ASC
+	''')
+
+	for row in SQL.fetchall():
+	    print f.format(
+		    row['clid'],
+		    row['cable_plabel'],
+		    row['p1_flabel'],
+		    row['p1_port'],
+		    row['p1_new_plabel'],
+ 		    row['p2_flabel'],
+		    row['p2_port'],
+		    row['p2_new_plabel']
+		)
+ 
 
 def convert_guid_intstr(guid):
     """ normalise representation of guid to string of an integer 
@@ -1211,32 +1261,6 @@ def load_overrides(path_csv):
 	    count += 1
                                 
     vlog(3, 'loaded %s cable overrides' % (count))
-
-    #SQL.execute('''
-    #    SELECT 
-    #        cl.clid,
-    #        cl.new_plabel as cable_plabel,
-    #        p1.flabel as p1_flabel,
-    #        p1.port as p1_port,
-    #        p1.new_plabel as p1_new_plabel,
-    #        p2.flabel as p2_flabel,
-    #        p2.port as p2_port,
-    #        p2.new_plabel as p2_new_plabel
-    #    FROM 
-    #        cable_labels as cl
-    #    INNER JOIN
-    #        cable_port_labels as p1
-    #    ON
-    #        cl.clid = p1.clid
-    #    INNER JOIN
-    #        cable_port_labels as p2
-    #    ON
-    #        cl.clid = p2.clid and
-    #        p1.cplid  != p2.cplid
-    #''')
-    #for row in SQL.fetchall():
-    #    print dict(row)
- 
 
 def run_parse(dump_dir):
     """ Run parse mode against a dump directory """
@@ -1599,6 +1623,9 @@ def dump_help():
 
   	{0} list ports {{c#|S{{guid}}/P{{port}}|cable port label}} 
 	    dump list of cable ports
+
+ 	{0} list overrides
+	    dump list of cable label overrides
 
     add: {0} add {{issue description}} {{c#|S{{guid}}/P{{port}}|cable port label}}+
 	Note: Use GUID/Port syntax or cable id (c#) to avoid applying to wrong cable
