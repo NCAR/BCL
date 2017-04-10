@@ -673,6 +673,29 @@ def enable_cable_ports(cid):
     for row in SQL.fetchall(): 
 	ib_mgt.enable_port(int(row['guid']), int(row['port'])) 
 
+def remove_cable(cid, comment):
+    """ marks cable as removed """
+    
+    release_cable(cid, comment)
+    
+    SQL.execute('BEGIN;')
+    SQL.execute('''
+        UPDATE
+            cables 
+        SET
+            state = 'removed',
+            comment = ?,
+            sibling = NULL
+        WHERE
+            cid = ?
+        ;''', (
+            comment,
+            cid
+    ));
+    SQL.execute('COMMIT;') 
+    
+    vlog(2, 'Marked c%s as removed: %s' % (cid, comment))
+ 
 def disable_cable_ports(cid):
     """ Disables cable ports in fabric """
 
@@ -1502,6 +1525,53 @@ def run_parse(dump_dir):
 	vlog(5, 'create cable(%s) %s <--> %s' % (cid, ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2)))
 	return cid
 
+    def check_replaced_cable(cid, SN, PN):
+	""" check if new cable was a cable replacement """
+
+	#find if this cable already existed but with a different field (SN or PN)
+	SQL.execute('''
+	    SELECT 
+		cid,
+		SN,
+		PN,
+		ctime,
+		state
+
+	    FROM 
+		cables
+
+	    WHERE
+		cid != ? and
+		SN = ? and
+		PN = ? and
+		state != 'removed'
+
+	    ORDER BY ctime DESC
+	    LIMIT 1
+	''',(
+	    cid,
+	    SN,
+	    PN
+	))
+
+	for row in SQL.fetchall():
+	    what = 'detected cable SN/PN change c%s and c%s from %s/%s to %s/%s' % (
+		cid, 
+		row['cid'],
+		row['SN'],
+		row['PN'],
+		SN, 
+		PN
+	    )
+
+	    if row['state'] == 'disabled' or row['state'] == 'suspect':
+		#cable was probably replaced on purpose
+		#mark old cable as removed
+		remove_cable(row['cid'], what)
+	    elif row['state'] == 'sibling':
+		#ignore new SN since it will likely be reversed
+		comment_cable(cid, what)  
+ 
     #ports from ib_diagnostics should not leave this function
     ports = []
     #dict to hold the issues found
@@ -1552,39 +1622,7 @@ def run_parse(dump_dir):
 
 	    #find if this cable already existed but with a different field (SN or PN)
 	    if gv(port, 'SN') and gv(port, 'PN'):
-		SQL.execute('''
-		    SELECT 
-			cables.cid as cid,
-			cables.SN as SN,
-			cables.PN as PN,
-			cables.ctime as ctime
-
-		    from 
-			cables
-
-		    WHERE
-			cables.cid != ? and
-			cables.SN = ? and
-			cables.PN = ?
-
-		    ORDER BY cables.ctime DESC
-		    LIMIT 1
-		''',(
-		    cid,
-		    gv(port1, 'SN'),
-		    gv(port1, 'PN')
-		))
-
-		for row in SQL.fetchall():
-		    #TODO: update problem that cable changed
-		    vlog(2,'detected cable SN/PN change c%s and c%s from %s/%s to %s/%s' % (
-			cid, 
-			row['cid'],
-			row['SN'],
-			row['PN'],
-			gv(port1, 'SN'),
-			gv(port1, 'PN') 
-		    ))
+		check_replaced_cable(cid, gv(port, 'SN'), gv(port, 'PN'))
 
 	#record cid in each port to avoid relookup
 	port1['cable_id'] = cid
@@ -1614,7 +1652,7 @@ def run_parse(dump_dir):
 	    missing_cables.append(int(row['cid']))
 
     for cid in missing_cables:
-	#Verify missing cables actually matter, ignore single port cables (aka unconnected)
+	#Verify missing cables actually matter: ignore single port cables (aka unconnected)
 	SQL.execute('''
 	    SELECT 
 		cables.cid,
@@ -1728,6 +1766,11 @@ def dump_help():
 	sets the suspected count back to 0
 	disassociate Extraview ticket from Cable
 
+    remove: {0} remove {{comment}} {{(cable id) c#}}+
+	Note: only use this if the cable has been removed/replaced permanently
+	release cable
+	sets the cable as removed (disables all future detection against cable)
+
     comment: {0} comment {{comment}} {{(bad cable id) c#}}+
 	add comment to bad cable's extraview ticket 
 
@@ -1742,9 +1785,6 @@ def dump_help():
 	reads the output of ibnetdiscover, ibdiagnet2 and ibcv2
 	generates issues against errors found 
 	checks if any cable has been replaced (new SN) and will set that cable back to watch state
-	TODO: detect disabled cables and put them in disabled state
-	TODO: detect sibling cable swaps
-	TODO: detect new SN
 
     load_overrides: {0} load_overrides {{path to csv}}
 	reads csv with following column labels (first line of CSV):
@@ -1801,6 +1841,9 @@ else:
 	if len(argv) == 4:
 	    lfilter = argv[3]
 	list_state(argv[2], lfilter)  
+    elif CMD == 'remove':
+	for cid in resolve_cables(argv[3:]):
+	    remove_cable(cid, argv[2]) 
     elif CMD == 'disable':
 	for cid in resolve_cables(argv[3:]):
 	    disable_cable(cid, argv[2])
