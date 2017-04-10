@@ -18,6 +18,7 @@ import time
 import datetime
 import sqlite3
 import re
+import csv
 
 def lock():
     """ Get lock for changes """
@@ -99,6 +100,25 @@ def initialize_db():
 	    --if port is an HCA
 	    hca BOOLEAN,
 	    FOREIGN KEY (cid) REFERENCES cables(cid)
+	);
+
+	--Special Table with Vendor firmware to physical label
+  	create table if not exists cable_labels (
+	    clid INTEGER PRIMARY KEY AUTOINCREMENT,
+	    --Physical label override
+	    new_plabel TEXT
+	);
+
+   	create table if not exists cable_port_labels (
+	    cplid INTEGER PRIMARY KEY AUTOINCREMENT,
+	    clid INTEGER,
+	    --Actual Firmware Label to look for
+	    flabel TEXT,
+	    --Actual Port Label
+	    port INTEGER,
+	    --New Physical label to apply
+	    new_plabel TEXT,
+	    FOREIGN KEY (clid) REFERENCES cable_labels(clid)
 	);
 
 	CREATE INDEX IF NOT EXISTS cable_ports_guid_index on cable_ports  (guid, port);
@@ -1138,9 +1158,89 @@ def convert_guid_intstr(guid):
 	since sqlite cant handle 64bit ints """
     return str(int(guid, 16))
 
+def load_overrides(path_csv):
+    """ Loads CSV with label overrides """
+    global EV, SQL
+
+    def gv(row, key):
+	""" get value or none """
+	return None if not key in row else str(row[key])
+
+    count = 0
+    with open(path_csv, 'rb') as csvfile:
+	for row in csv.DictReader(csvfile, delimiter=',', quotechar='\"'):
+	    SQL.execute('''
+		INSERT INTO 
+		cable_labels 
+		(
+		    new_plabel
+		) VALUES (
+		    ?
+		);''', (
+		    str(row['cable physical label']),
+	    ));
+
+	    clid = SQL.lastrowid
+ 
+	    SQL.executemany('''
+		INSERT INTO 
+		cable_port_labels  
+		(
+		    clid,
+		    flabel,
+		    port,
+		    new_plabel
+		) VALUES (
+		    ?, ?, ?, ?
+		);''', [
+		    (
+			clid,
+			gv(row, 'port1 firmware label'),
+			gv(row, 'port1 port number'),
+			gv(row, 'port1 new physical label')
+		    ),
+ 		    (
+			clid,
+			gv(row, 'port2 firmware label'),
+			gv(row, 'port2 port number'),
+			gv(row, 'port2 new physical label')
+		    )
+		]
+	    );
+
+	    count += 1
+                                
+    vlog(3, 'loaded %s cable overrides' % (count))
+
+#    SQL.execute('''
+#	SELECT 
+#	    cl.clid,
+#	    cl.new_plabel as cable_plabel,
+#	    p1.flabel as p1_flabel,
+#	    p1.port as p1_port,
+#	    p1.new_plabel as p1_new_plabel,
+# 	    p2.flabel as p2_flabel,
+#	    p2.port as p2_port,
+#	    p2.new_plabel as p2_new_plabel
+#	FROM 
+#	    cable_labels as cl
+#	INNER JOIN
+#	    cable_port_labels as p1
+#	ON
+#	    cl.clid = p1.clid
+#	INNER JOIN
+#	    cable_port_labels as p2
+#	ON
+#	    cl.clid = p2.clid and
+#	    p1.cplid  != p2.cplid
+#    ''')
+#    for row in SQL.fetchall():
+#	print dict(row)
+ 
+
 def run_parse(dump_dir):
     """ Run parse mode against a dump directory """
-    global EV, STATE, SQL
+    global EV, SQL
 
     def gv(port, key):
 	""" get value or none """
@@ -1497,8 +1597,20 @@ def dump_help():
 	reads the output of ibnetdiscover, ibdiagnet2 and ibcv2
 	generates issues against errors found 
 	checks if any cable has been replaced (new SN) and will set that cable back to watch state
+	TODO: detect disabled cables and put them in disabled state
 	TODO: detect sibling cable swaps
 	TODO: detect new SN
+
+    load_overrides: {0} load_overrides {{path to csv}}
+	reads csv with following column labels (first line of CSV):
+	    'cable physical label'
+	    'port1 firmware label'
+	    'port1 port number'
+	    'port1 new physical label'
+	    'port2 firmware label'
+	    'port2 port number'
+	    'port2 new physical label'
+	any cable discovered will have physical label overrode
 
     Optional Environment Variables:
 	VERBOSE={{1-5 default=3}}
@@ -1536,6 +1648,8 @@ else:
     CMD=argv[1].lower()
     if CMD == 'parse':
 	run_parse(argv[2])  
+    if CMD == 'load_overrides':
+	load_overrides(argv[2])   
     elif CMD == 'list':
 	lfilter = None
 	if len(argv) == 4:
