@@ -895,7 +895,8 @@ def disable_cable(cid, comment):
 
     for row in SQL.fetchall():
 	if row['state'] == 'silbing':
-	    vlog(1, 'sibling cable already disabled. ignoring request to disable c%s.' % (cid))
+	    vlog(1, 'disabling sibling cable c%s.' % (cid))
+	    disable_cable_ports(cid)
 	    return
 	elif row['state'] == 'disabled':
  	    vlog(1, 'cable already disabled. ignoring request to disable c%s again.' % (cid))
@@ -1704,7 +1705,7 @@ def dump_help():
 
     disable: {0} disable 'comment' {{(bad cable id) c#}}+
 	disables cable in fabric
-	add cable to bad cable list (if not one already)
+	add cable to bad cable list (if not one already) unless cable is sibling
 
     enable: {0} enable 'comment' {{(cable id) c#}}+
 	Note: Only use this command for debugging cable issues
