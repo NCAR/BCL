@@ -1217,6 +1217,7 @@ def load_overrides(path_csv):
 	return None if not key in row else str(row[key])
 
     count = 0
+    SQL.execute('BEGIN;');
     with open(path_csv, 'rb') as csvfile:
 	for row in csv.DictReader(csvfile, delimiter=',', quotechar='\"'):
 	    SQL.execute('''
@@ -1260,6 +1261,7 @@ def load_overrides(path_csv):
 
 	    count += 1
                                 
+    SQL.execute('COMMIT;');
     vlog(3, 'loaded %s cable overrides' % (count))
 
 def run_parse(dump_dir):
