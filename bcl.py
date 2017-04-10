@@ -894,10 +894,8 @@ def disable_cable(cid, comment):
     ))
 
     for row in SQL.fetchall():
-	if row['state'] == 'silbing':
+	if row['state'] == 'sibling':
 	    vlog(1, 'disabling sibling cable c%s.' % (cid))
-	    disable_cable_ports(cid)
-	    return
 	elif row['state'] == 'disabled':
  	    vlog(1, 'cable already disabled. ignoring request to disable c%s again.' % (cid))
 	    return                    
@@ -907,20 +905,21 @@ def disable_cable(cid, comment):
 
 	vlog(3, 'disabling cable c%s.' % (cid))
 
- 	SQL.execute('BEGIN;')
-	SQL.execute('''
-	    UPDATE
-		cables 
-	    SET
-		state = 'disabled',
-		comment = ?
-	    WHERE
-		cid = ?
-	    ;''', (
-		comment,
-		cid
-	));
-	SQL.execute('COMMIT;')
+ 	if row['state'] != 'sibling': 
+	    SQL.execute('BEGIN;')
+	    SQL.execute('''
+		UPDATE
+		    cables 
+		SET
+		    state = 'disabled',
+		    comment = ?
+		WHERE
+		    cid = ?
+		;''', (
+		    comment,
+		    cid
+	    ));
+	    SQL.execute('COMMIT;')
 
 	disable_cable_ports(cid)
 
