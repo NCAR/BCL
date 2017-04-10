@@ -776,6 +776,7 @@ def send_casg(cid, comment):
 
     #EV.assign_group(tid, 'casg', None, {
     if not DISABLE_TICKETS:
+	vlog(3, 'Sent Ticket %s to CASG' % (tid))
 	EV.assign_group(tid, 'ssg', 'nate', {
 	    'COMMENTS':	'''
 		--- TEST TICKET: PLEASE RETURN TO SSG ---
@@ -1711,6 +1712,7 @@ EV = None
 
 if 'DISABLE_TICKETS' in os.environ and os.environ['DISABLE_TICKETS'] == "YES":
     DISABLE_TICKETS=True
+    vlog(1, 'Disabling creating of extraview tickets')
 else:
     EV = extraview_cli.open_extraview()
 
