@@ -653,6 +653,26 @@ def comment_cable(cid, comment):
 
     SQL.execute('COMMIT;')
 
+def enable_cable_ports(cid):
+    """ Enables cable ports in fabric """
+
+    SQL.execute('''
+	SELECT 
+            cpid,
+	    guid,
+	    port,
+	    hca
+	FROM 
+	    cable_ports 
+	WHERE
+	    cid = ?
+    ''',(
+	cid,
+    ))
+
+    for row in SQL.fetchall(): 
+	ib_mgt.enable_port(int(row['guid']), int(row['port'])) 
+
 def disable_cable_ports(cid):
     """ Disables cable ports in fabric """
 
@@ -811,6 +831,12 @@ def send_casg(cid, comment):
 	});
      
 
+def enable_cable(cid, comment):
+    """ enable cable """
+
+    vlog(3, 'enabling cable c%s: %s' % (cid, comment))
+    enable_cable_ports(cid)
+ 
 def disable_cable(cid, comment):
     """ disable cable """
 
@@ -1643,6 +1669,10 @@ def dump_help():
 	disables cable in fabric
 	add cable to bad cable list (if not one already)
 
+    enable: {0} enable 'comment' {{(cable id) c#}}+
+	Note: Only use this command for debugging cable issues
+	enables cable in fabric
+ 
     casg: {0} casg {{comment}} {{(bad cable id) c#}}+
 	disables cable in fabric
 	send extraview ticket to CASG
@@ -1736,6 +1766,9 @@ else:
     elif CMD == 'disable':
 	for cid in resolve_cables(argv[3:]):
 	    disable_cable(cid, argv[2])
+    elif CMD == 'enable':
+	for cid in resolve_cables(argv[3:]):
+	    enable_cable(cid, argv[2]) 
     elif CMD == 'casg':
 	for cid in resolve_cables(argv[3:]):
 	    send_casg(cid, argv[2]) 
