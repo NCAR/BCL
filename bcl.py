@@ -1212,30 +1212,30 @@ def load_overrides(path_csv):
                                 
     vlog(3, 'loaded %s cable overrides' % (count))
 
-    SQL.execute('''
-	SELECT 
-	    cl.clid,
-	    cl.new_plabel as cable_plabel,
-	    p1.flabel as p1_flabel,
-	    p1.port as p1_port,
-	    p1.new_plabel as p1_new_plabel,
- 	    p2.flabel as p2_flabel,
-	    p2.port as p2_port,
-	    p2.new_plabel as p2_new_plabel
-	FROM 
-	    cable_labels as cl
-	INNER JOIN
-	    cable_port_labels as p1
-	ON
-	    cl.clid = p1.clid
-	INNER JOIN
-	    cable_port_labels as p2
-	ON
-	    cl.clid = p2.clid and
-	    p1.cplid  != p2.cplid
-    ''')
-    for row in SQL.fetchall():
-	print dict(row)
+    #SQL.execute('''
+    #    SELECT 
+    #        cl.clid,
+    #        cl.new_plabel as cable_plabel,
+    #        p1.flabel as p1_flabel,
+    #        p1.port as p1_port,
+    #        p1.new_plabel as p1_new_plabel,
+    #        p2.flabel as p2_flabel,
+    #        p2.port as p2_port,
+    #        p2.new_plabel as p2_new_plabel
+    #    FROM 
+    #        cable_labels as cl
+    #    INNER JOIN
+    #        cable_port_labels as p1
+    #    ON
+    #        cl.clid = p1.clid
+    #    INNER JOIN
+    #        cable_port_labels as p2
+    #    ON
+    #        cl.clid = p2.clid and
+    #        p1.cplid  != p2.cplid
+    #''')
+    #for row in SQL.fetchall():
+    #    print dict(row)
  
 
 def run_parse(dump_dir):
@@ -1357,7 +1357,6 @@ def run_parse(dump_dir):
 		port_plabel['port2'] = row['p2_new_plabel']
 		vlog(4, 'detected cable label override to %s' % (plabel))
 
-	print plabel
 	SQL.execute('''
 	    INSERT INTO 
 	    cables 
