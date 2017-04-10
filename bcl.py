@@ -272,6 +272,7 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 
     iid = None
 
+    SQL.execute('BEGIN;')
     #find if this exact issue already exists
     SQL.execute('''
 	SELECT 
@@ -294,7 +295,6 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 	cid       
     ))
 
-    SQL.execute('BEGIN;')
     #only care about last time this issue was seen	
     #in theory, there should never be more than 1
     #since a new issue would have a new cable
@@ -1695,9 +1695,17 @@ def run_parse(dump_dir):
 	cid = None
 
 	#set cable from port which was just resolved
-	if len(issue['ports']) and 'cable_id' in issue['ports'][0]:
+	if issue['ports'] and len(issue['ports']) and 'cable_id' in issue['ports'][0]:
 	    cid = issue['ports'][0]['cable_id']
 
+	vlog(5, 'New Issue %s' % ([
+	    issue['type'],
+	    'c%s' % cid,
+	    issue['issue'],
+	    issue['raw'],
+	    issue['source'],
+	    timestamp
+	]))
 	#hand over cleaned up info for issues
 	add_issue(
 	    issue['type'],
