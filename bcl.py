@@ -1707,20 +1707,7 @@ def run_parse(dump_dir):
 	    )
 	else:
 	    #issues without a known cable will be aggregated into a single ticket
-	    ticket_issues.append('''
-	    Type: %s
-	    Issue: %s
-	    Source: %s
-	    Timestamp: %s
-	    %s
-
-	    ''' % (
- 		issue['type'],
-		issue['issue'],
-		issue['source'],
-		timestamp,
-		issue['raw']
-	    ))
+	    ticket_issues.append(issue['raw'])
 
     SQL.execute('VACUUM;')
 
@@ -1751,10 +1738,10 @@ def run_parse(dump_dir):
 	i = 0
 	buf = ''
 	for msg in ticket_issues:
-	    buf += msg
+	    buf += msg + "\n"
 	    i += 1
 
-	    if i == 15:
+	    if i == 200: #magic guessed number that EV can take
 		EV.add_resolver_comment(tid, buf)
 		buf = ''
 		i = 0
