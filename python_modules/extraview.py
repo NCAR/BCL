@@ -3,6 +3,7 @@ import argparse
 import requests
 import xml.etree.ElementTree
 import re
+from nlog import vlog,die_now
 
 class client:
     """ Extraview Client """
@@ -202,6 +203,7 @@ class client:
 	if m:
 	    return m.group(1)
 	else:
+	    vlog(2, 'Unable to create extraview ticket: %s' % (resp))
 	    return None
 
     def update(self, id, fields):
