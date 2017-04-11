@@ -1179,9 +1179,10 @@ def list_state(what, list_filter):
 		)
 
     elif what == 'issues':
-        f='{0:<10}{1:<10}{2:<10}{3:<15}{4:<20}{5:<50}{6:<50}'
+        f='{0:<10}{1:<15}{2:<10}{3:<10}{4:<15}{5:<20}{6:<100}{7:<50}'
  	print f.format(
 		"issue_id",
+		"Type",
 		"cable_id",
 		"Ignored",
 		"mtime",
@@ -1208,7 +1209,8 @@ def list_state(what, list_filter):
 	for row in SQL.fetchall():
 	    print f.format(
 		    'i%s' % row['iid'],
-		    'c%s' % row['cid'],
+		    row['type'],
+		    'c%s' % row['cid'] if row['cid'] else None,
 		    'False' if row['ignore'] == 0 else 'True',
 		    row['mtime'],
 		    row['source'],
@@ -1675,6 +1677,7 @@ def run_parse(dump_dir):
 	    else:
 		vlog(3, 'Ignoring missing single port Cable %s' % (cid))
 
+    ticket_issues = []
     for issue in issues:
 	cid = None
 
@@ -1683,25 +1686,78 @@ def run_parse(dump_dir):
 	    if iport and 'cable_id' in iport:
 		cid = iport['cable_id']
 
-	vlog(5, 'New Issue %s' % ([
+	vlog(5, 'issue detected: %s' % ([
 	    issue['type'],
-	    'c%s' % cid,
+	    'c%s' % cid if cid else None,
 	    issue['issue'],
 	    issue['raw'],
 	    issue['source'],
 	    timestamp
 	]))
-	#hand over cleaned up info for issues
-	add_issue(
-	    issue['type'],
-	    cid,
-	    issue['issue'],
-	    issue['raw'],
-	    issue['source'],
-	    timestamp
-	)
+
+	if cid:
+	    #hand over cleaned up info for issues
+	    add_issue(
+		issue['type'],
+		cid,
+		issue['issue'],
+		issue['raw'],
+		issue['source'],
+		timestamp
+	    )
+	else:
+	    #issues without a known cable will be aggregated into a single ticket
+	    ticket_issues.append('''
+	    Type: %s
+	    Issue: %s
+	    Source: %s
+	    Timestamp: %s
+	    %s
+
+	    ''' % (
+ 		issue['type'],
+		issue['issue'],
+		issue['source'],
+		timestamp,
+		issue['raw']
+	    ))
 
     SQL.execute('VACUUM;')
+
+    #create ticket if are non cable issues
+    if ticket_issues and not DISABLE_TICKETS:
+	tid = EV.create( 
+	    'ssgev',
+	    'ssg',
+	    'nate',
+	    '-----TEST----- %s: Infinband Issues' % (cluster_info.get_cluster_name_formal()), 
+	    '''
+	    %s issues have been detected against the Infinband fabric for %s.
+	    ''' % (
+		len(ticket_issues),
+		cluster_info.get_cluster_name_formal()
+	    ), { 
+		'HELP_LOCATION': EV.get_field_value_to_field_key('HELP_LOCATION', 'NWSC'),
+		'HELP_HOSTNAME': EV.get_field_value_to_field_key(
+		    'HELP_HOSTNAME', 
+		    cluster_info.get_cluster_name_formal()
+		),
+		'HELP_HOSTNAME_OTHER': 'Infiniband Fabric'
+	}) 
+
+	vlog(3, 'Created Ticket %s against fabric issues' % (tid))
+
+	#combine the issues and try to not crash EV
+	i = 0
+	buf = ''
+	for msg in ticket_issues:
+	    buf += msg
+	    i += 1
+
+	    if i == 15:
+		EV.add_resolver_comment(tid, buf)
+		buf = ''
+		i = 0
 
 
 def dump_help():
