@@ -1842,6 +1842,10 @@ def dump_help():
 	DISABLE_TICKETS={{YES|NO default=NO}}
 	    YES: disable creating and updating tickets (may cause extra errors)
 	    NO: create tickets
+
+	BAD_CABLE_DB={path to sqlite db defailt=/etc/ncar_bad_cable_list.sqlite}
+	    Warning: will autocreate if non-existant or empty
+	    Override which sqlite DB to use.
  
     """.format(argv[0]))
 
@@ -1853,6 +1857,10 @@ BAD_CABLE_DB='/etc/ncar_bad_cable_list.sqlite'
 
 DISABLE_TICKETS=False
 EV = None
+
+if 'BAD_CABLE_DB' in os.environ and os.environ['BAD_CABLE_DB']:
+    BAD_CABLE_DB=os.environ['BAD_CABLE_DB']
+    vlog(1, 'Database: %s' % (BAD_CABLE_DB))
 
 if 'DISABLE_TICKETS' in os.environ and os.environ['DISABLE_TICKETS'] == "YES":
     DISABLE_TICKETS=True
