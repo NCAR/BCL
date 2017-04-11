@@ -1575,6 +1575,10 @@ def run_parse(dump_dir):
     with open('%s/%s' % (dump_dir,'ibdiagnet2.log') , 'r') as fds:
 	ib_diagnostics.parse_ibdiagnet(ports, issues, fds.read()) 
 
+    if os.path.isfile('%s/%s' % (dump_dir,'ibdiagnet2.cables')):
+	with open('%s/%s' % (dump_dir,'ibdiagnet2.cables'), 'r') as fds:
+	    ib_diagnostics.parse_ibdiagnet_cables(ports, fds.read()) 
+
     p_ibcv2 = '%s/%s' % (dump_dir,'sgi-ibcv2.log') #optional
     if os.path.isfile(p_ibcv2):
 	with open(p_ibcv2, 'r') as fds:
