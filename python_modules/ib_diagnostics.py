@@ -444,7 +444,7 @@ def parse_sgi_ibcv2 ( ports, issues, contents ):
 	if match.group('error'):
 	    vlog(5, 'unknown error: %s' % match.group('error'))
             issues.append({ 
-		'type': 'unknown',
+		'type': 'disabled_port',
 		'ports': [],
 		'issue': 'Port Physical State Disabled',
 		'raw': None,
