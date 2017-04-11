@@ -650,6 +650,68 @@ def parse_ibdiagnet_csv ( ports, fcsv ):
 		    #   rowdict['port'] = rowdict['PortNum2']
 		    #   resolve_update_port(ports,rowdict) 
                           
+def parse_ibdiagnet_cables ( ports, contents ):
+    """ Parse the output of ibdiagnet ibdiagnet2.cables """
+    vlog(4, 'parse_ibdiagnet_cables()')
+
+    def add_port(port):
+	if not 'SN' in port or not port['SN']:
+	    #ignore any port that doesnt have SN
+	    return
+
+	resolve_update_port(ports, port)
+
+    #-------------------------------------------------------
+    #Port=2 Lid=0x02d7 GUID=0x0002c9030068eaf0 Port Name=gladei00ib1a/L02/U1/P2
+    #-------------------------------------------------------
+    #Vendor: Mellanox
+    #OUI: 0x2c9
+    #PN: 00W0085
+    #SN: 4008537306W
+    #Rev: A1
+    #Length: 20 m
+    #Type: 850 nm VCSEL
+    #SupportedSpeed: SDR/DDR/QDR/FDR
+
+    port = None
+    for match in re.finditer(r"""
+	(?!
+	    [#-]+
+	    [\n\r]
+	)
+	[\r\n]*				#all of the stanzas start with --- or ###
+	(?:
+	    (?![#-]+)
+	    (?:
+		Port=(?P<port>\d+)\s+
+ 		Lid=(?P<lid>\w+)\s+
+		GUID=(?P<guid>\w+)\s+
+		Port\ Name=(?P<port_name>.*)\s* 
+		|
+		(?P<field>\w*)
+		\s*:\s+
+		(?P<value>\w*)
+	    )
+	)[\r\n]+   #first real line is the label
+	
+	""", contents, re.VERBOSE):
+
+	if match.group('port'):
+	    if port:
+		add_port(port)
+
+	    port = {
+		    'port': match.group('port'),
+		    'lid': match.group('lid'),
+		    'guid': match.group('guid'),
+		    'name': match.group('port_name')
+		}
+	else:
+	    port[match.group('field')] = match.group('value')
+
+    if port:
+	add_port(port)
+
 def find_cable_by_switch_leaf_port ( ports, name, leaf, port ):
     """ Checks all of the ports for any that are not at full width or speed """
 
