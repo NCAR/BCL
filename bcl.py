@@ -32,7 +32,6 @@ def initialize_db():
     except Exception as err:
 	vlog(1, 'Unable to Open DB: {0}'.format(err))
 
-
     SQL.executescript("""
 	PRAGMA foreign_keys = ON;
 	BEGIN;
@@ -1587,6 +1586,7 @@ def run_parse(dump_dir):
     #add every known cable to database
     #slow but keeps sane list of all cables forever for issue tracking
     known_cables=[] #track every that is found
+    new_cables=[] #track every that is created
     for port in ports:
 	port1 = port
 	port2 = port['connection']
@@ -1595,10 +1595,7 @@ def run_parse(dump_dir):
 	if not cid:
 	    #create the cable
 	    cid = insert_cable(port1, port2, timestamp)
-
-	    #find if this cable already existed but with a different field (SN or PN)
-	    if gv(port, 'SN') and gv(port, 'PN'):
-		check_replaced_cable(cid, gv(port, 'SN'), gv(port, 'PN'))
+	    new_cables.append({ 'cid': cid, 'port1': port1, 'port2': port2})
 
 	#record cid in each port to avoid relookup
 	port1['cable_id'] = cid
@@ -1608,6 +1605,17 @@ def run_parse(dump_dir):
 	known_cables.append(cid)
 
     SQL.execute('COMMIT;')
+
+    #check new cables (outside of begin/commit)
+    for cable in new_cables:
+	cid = cable['cid']
+	port1 = cable['port1']
+	port2 = cable['port2']
+
+	#find if this cable already existed but with a different field (SN or PN)
+	if gv(port, 'SN') and gv(port, 'PN'):
+	    check_replaced_cable(cid, gv(port, 'SN'), gv(port, 'PN'))
+
 
     #Find any cables that are known but not parsed this time around (aka went dark)
     #ignore any cables in a disabled state
@@ -1671,8 +1679,9 @@ def run_parse(dump_dir):
 	cid = None
 
 	#set cable from port which was just resolved
-	if issue['ports'] and len(issue['ports']) and 'cable_id' in issue['ports'][0]:
-	    cid = issue['ports'][0]['cable_id']
+	for iport in issue['ports']:
+	    if iport and 'cable_id' in iport:
+		cid = iport['cable_id']
 
 	vlog(5, 'New Issue %s' % ([
 	    issue['type'],
