@@ -10,7 +10,6 @@ import syslog
 import pbs
 import siblings
 import cluster_info
-import file_locking
 import ib_diagnostics
 import ib_mgt
 import pprint
@@ -19,25 +18,6 @@ import datetime
 import sqlite3
 import re
 import csv
-
-def lock():
-    """ Get lock for changes """
-    global LOCK
-
-    if not LOCK:
-	LOCK = file_locking.try_lock('/var/run/ncar_bcl', tries=10)
-	if not LOCK:
-	    die_now("unable to obtain lock. please try again later.")
-	vlog(5, 'lock obtained')
-
-def unlock():
-    """ release lock for changes """
-    global LOCK
-
-    if LOCK:
-	LOCK.close()
-	LOCK = None
-	vlog(5, 'released lock')
 
 def initialize_db():
     """ Initialize DATABASE state variable 
@@ -52,8 +32,6 @@ def initialize_db():
     except Exception as err:
 	vlog(1, 'Unable to Open DB: {0}'.format(err))
 
-
-    lock()
 
     SQL.executescript("""
 	PRAGMA foreign_keys = ON;
@@ -145,7 +123,6 @@ def initialize_db():
 	COMMIT;
     """)
 	    
-    unlock()
 
 def release_db():
     """ Releases Database """
@@ -1605,7 +1582,6 @@ def run_parse(dump_dir):
     ibsp = cluster_info.get_ib_speed()
     ib_diagnostics.find_underperforming_cables ( ports, issues, ibsp['speed'], ibsp['width'])
 
-    lock()
     SQL.execute('BEGIN;')
 
     #add every known cable to database
@@ -1718,7 +1694,6 @@ def run_parse(dump_dir):
 
     SQL.execute('VACUUM;')
 
-    unlock()
 
 def dump_help():
     die_now("""NCAR Bad Cable List Multitool
@@ -1822,7 +1797,6 @@ if not cluster_info.is_mgr():
 BAD_CABLE_DB='/etc/ncar_bad_cable_list.sqlite'
 """ const string: Path to JSON database for bad cable list """
 
-LOCK = None
 DISABLE_TICKETS=False
 EV = None
 
