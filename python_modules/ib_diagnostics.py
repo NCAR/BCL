@@ -501,6 +501,24 @@ def parse_ibdiagnet ( ports, issues, contents ):
 	    )
 	    \s*-\s*(?P<what>.*)
 	""", re.VERBOSE)  
+
+    #Unassigned LFT for lid:4 Dead end at:S7cfe900300bdf4f0/N7cfe900300bdf4f0 PLFT:0
+    #Error in mark route from:gs1/U1 SLID:108 to DLID:103
+    #Fail to find a path from:r1i3n6/U1/1 to:r1i3n12/U1/1
+    #Error in mark route from:r1i1n17/U1 SLID:46 to DLID:64
+    ibdiag_line_regex_lft = re.compile(r"""
+	    ^\s*
+	    (?::\s*|)
+	    (?:
+		Unassigned\ LFT\ for
+		|
+		Error\ in\ mark\ route
+		|
+		Fail\ to\ find\ a\ path
+		|
+		Error\ in\ mark\ route
+	    ).*
+	""", re.VERBOSE)   
     for match in re.finditer(r"""
 	(?![#-]+[\n\r])[\r\n]*		#all of the stanzas start with --- or ###
 	(?P<label>(?![#-]+).*)[\r\n]+   #first real line is the label
@@ -525,14 +543,18 @@ def parse_ibdiagnet ( ports, issues, contents ):
 
 		   cmatch = ibdiag_line_regex_port.match(lmatch.group('msg'))
 		   lnmatch = ibdiag_line_regex_link.match(lmatch.group('msg'))
+		   lftmatch = ibdiag_line_regex_lft.match(lmatch.group('msg'))
 		   if cmatch:
-		       issues.append({ 
-		           'type': 'counters',
-		           'ports': [parse_resolve_port(ports, cmatch.group('port'))],
-		           'issue': 'Counter %s increased to %s' % (cmatch.group('counter'), cmatch.group('value')),
-		           'raw': cmatch.string,
-		           'source': 'ibdiagnet2.log'
-		       })    
+		       if 'port_rcv_switch_relay_errors' == cmatch.group('counter'):
+			   vlog(4, 'ignoring counter port_rcv_switch_relay_errors with %s' % (cmatch.group('value')))
+		       else:
+			   issues.append({ 
+			       'type': 'counters',
+			       'ports': [parse_resolve_port(ports, cmatch.group('port'))],
+			       'issue': 'Counter %s increased to %s' % (cmatch.group('counter'), cmatch.group('value')),
+			       'raw': cmatch.string,
+			       'source': 'ibdiagnet2.log'
+			   })    
 		   elif lnmatch:
  		       dport2 = None
 		       if lnmatch.group('port2'):
@@ -544,13 +566,22 @@ def parse_ibdiagnet ( ports, issues, contents ):
 		           'raw': lnmatch.string,
 		           'source': 'ibdiagnet2.log'
 		       })
+		   elif lftmatch:
+		       issues.append({ 
+		           'type': 'lft',
+		           'ports': [],
+		           'issue': 'LFT Error',
+		           'raw': lmatch.group('msg'),
+		           'source': 'ibdiagnet2.log'
+		       }) 
 		   else:
 		       if not str(lmatch.group('msg')) in [
 			        'Ports counters value Check finished with errors',
 				'Ports counters Difference Check (during run) finished with errors',
 				'Links Speed Check finished with errors',
 				'Links Check finished with errors',
-				'Fabric Discover finished with errors'
+				'Fabric Discover finished with errors',
+				'Partition Keys finished with errors'
 			    ]:
 
 			    port1 = None
