@@ -1758,6 +1758,8 @@ def run_parse(dump_dir):
 		EV.add_resolver_comment(tid, buf)
 		buf = ''
 		i = 0
+	if buf != '':
+	    EV.add_resolver_comment(tid, buf)
 
 
 def dump_help():
