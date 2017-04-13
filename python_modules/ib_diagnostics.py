@@ -116,6 +116,7 @@ def parse_port ( label ):
 	match = ib_portname_type3_regex.match(label) 
 	if match:
 	    guid = '0x{0}'.format(match.group('guid'))
+	    name = guid
 	    if match.group('port'):
 	        port = int(match.group('port'))
 
@@ -440,7 +441,6 @@ def parse_sgi_ibcv2 ( ports, issues, contents ):
 	\s*
 	""", contents, re.VERBOSE):
 
-	vlog(5, match.groups())
 	if match.group('error'):
 	    vlog(5, 'unknown error: %s' % match.group('error'))
             issues.append({ 
@@ -715,8 +715,7 @@ def parse_ibdiagnet_cables ( ports, contents ):
 	    port = {
 		    'port': match.group('port'),
 		    'lid': match.group('lid'),
-		    'guid': match.group('guid'),
-		    'name': match.group('port_name')
+		    'guid': match.group('guid')
 		}
 	else:
 	    port[match.group('field')] = match.group('value')
@@ -767,9 +766,9 @@ def resolve_port(ports, port):
 	vlog(5, 'unable to resolve port: Name={0} PortNum={1} HCA={2} Leaf={3} Spine={4}'.format(
 	    port['name'], 
 	    port['port'],
-	    port['hca'],
-	    port['leaf'],
-	    port['spine']
+	    port['hca'] if 'hca' in port else None,
+	    port['leaf'] if 'leaf' in port else None,
+	    port['spine'] if 'spine' in port else None
 	))
 
     vlog(4, 'unable to resolve port: {0}'.format(port))
