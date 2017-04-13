@@ -793,15 +793,22 @@ def send_casg(cid, comment):
 	''' % (
 	    row['plabel'] if row['plabel'] else row['flabel'], 
 	    row['flabel'],
-	    row['length'],
-	    row['SN'],
-	    row['PN'],
+	    row['length'] if row['length'] else 'Unknown',
+	    row['SN'] if row['SN'] else 'Unknown',
+	    row['PN'] if row['PN'] else 'Unknown',
 	    row['ticket']
 	))
 
     #EV.assign_group(tid, 'casg', None, {
     if not DISABLE_TICKETS:
 	vlog(3, 'Sent Ticket %s to CASG' % (tid))
+
+	#provide physical label if one is known
+	if plabel:
+	    label = 'Physical Cable Label: %s\nSoftware Cable Label: %s' % (plabel, flabel)
+	else:
+ 	    label = 'Cable Label: %s' % (flabel)
+
 	EV.assign_group(tid, 'ssg', 'nate', {
 	    'COMMENTS':	'''
 		--- TEST TICKET: PLEASE RETURN TO SSG ---
@@ -810,8 +817,7 @@ def send_casg(cid, comment):
 		The follow cable has been marked for repairs and has been disabled.
 		This cable has had %s events that required repair to date.
 
-		Physical Cable Label: %s
-		Software Cable Label: %s
+		%s
 		Length: %s
 		Serial: %s
 		Product Number: %s
@@ -825,11 +831,10 @@ def send_casg(cid, comment):
 		If there are any questions or issues, please return this ticket to SSG with details.
 	    ''' % (
 		    suspected,
-		    plabel if plabel else flabel,
-		    flabel,
-		    length,
-		    SN,
-		    PN,
+		    label,
+		    length if length else 'Unknown',
+		    SN if SN else 'Unknown',
+		    PN if PN else 'Unknown',
 		    comment,
 		    "\n\n".join(siblings) if siblings  else 'No siblings cables at this time.'
 	    )
