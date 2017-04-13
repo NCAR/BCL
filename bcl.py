@@ -39,7 +39,11 @@ def initialize_db():
  	create table if not exists cables (
 	    cid INTEGER PRIMARY KEY AUTOINCREMENT,
 	    state TEXT,
+	    --creation time
 	    ctime INTEGER,
+	    --mtime (last time state from watch state)
+	    mtime INTEGER,
+	    --Cable Length
 	    length text,
 	    --Serial Number
 	    SN text,
@@ -403,12 +407,14 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 		    state = 'suspect',
 		    suspected = ?,
 		    ticket = ?,
-		    sibling = NULL
+		    sibling = NULL,
+		    mtime = ?
 		WHERE
 		    cid = ?
 		;''', (
 		    suspected,
 		    tid,
+		    timestamp,
 		    cid
 	    ));
 
@@ -1049,8 +1055,107 @@ def release_cable(cid, comment, full = False):
 def list_state(what, list_filter):
     """ dump state to user """
 
-    if what == 'cables':
-        f='{0:<10}{1:<10}{2:10}{3:<12}{4:<15}{5:<15}{6:<15}{7:<15}{8:<15}{9:<50}{10:<50}{11:<50}'
+    if what == 'action' or what == 'actionable':
+        cid=None
+	if list_filter:
+	    b = resolve_cable(list_filter)
+	    if b:
+		cid = b['cid']
+		vlog(5, 'resolved %s to c%s' % (list_filter, cid))
+	    else:
+		vlog(1, 'unable to resolve %s' % list_filter)
+		return
+
+	f='{0:<10}{1:<10}{2:<15}{3:<12}{4:<15}{5:<15}{6:<70}'
+ 	print f.format(
+		"cable_id",
+		"state",
+		"Ticket",
+		"length",
+		"Serial_Number",
+		"Product_Number",
+		"Firmware Label (node_desc)"
+	    )             
+
+  	SQL.execute('''
+	    SELECT 
+		cid,
+		length,
+		SN,
+		PN,
+		state,
+		comment,
+		suspected,
+		ticket,
+		flabel,
+		mtime
+	    FROM 
+		cables
+	    WHERE
+		( 
+		    ? IS NULL and
+		    state != 'watch' and
+		    state != 'removed' and
+		    sibling IS NULL
+		) or cid = ? 
+	    ORDER BY 
+		ctime 
+	''', (
+	    cid,
+	    cid
+	))
+
+	for row in SQL.fetchall():
+	    print f.format(
+		    'c%s' % (row['cid']),
+		    row['state'],
+		    row['ticket'],
+		    row['length'] if row['length'] else None,
+		    row['SN'] if row['SN'] else None,
+		    row['PN'] if row['PN'] else None,
+		    row['flabel']
+		) 
+	    print '\tSuspected %s times. Last went suspect on %s' % (
+		    row['suspected'], 
+		    datetime.datetime.fromtimestamp(row['mtime']).strftime('%Y-%m-%d %H:%M:%S')
+		)
+	    print '\tComment: %s' % (row['comment'])
+
+	    SQL.execute('''
+		SELECT 
+		    iid,
+		    type,
+		    issue,
+		    raw,
+		    source,
+		    mtime,
+		    ignore,
+		    cid 
+		FROM 
+		    issues 
+		WHERE
+		    ignore = 0 and 
+		    cid = ? and
+		    mtime >= ?
+		ORDER BY iid ASC
+	    ''', (
+		int(row['cid']),
+		int(row['mtime']),
+	    ))
+
+	    for irow in SQL.fetchall():
+		print '\tIssue %s: %s' % (
+			'i%s' % irow['iid'],
+			irow['issue']
+		    ) 
+
+
+
+	    print ' '
+
+
+    elif what == 'cables':
+        f='{0:<10}{1:<10}{2:10}{3:<12}{4:<15}{5:<15}{6:<15}{7:<15}{8:<15}{9:<15}{10:<50}{11:<50}{12:<50}'
  	print f.format(
 		"cable_id",
 		"sibling",
@@ -1058,6 +1163,7 @@ def list_state(what, list_filter):
 		"Suspected#",
 		"Ticket",
 		"ctime",
+		"mtime",
 		"length",
 		"Serial_Number",
 		"Product_Number",
@@ -1070,6 +1176,7 @@ def list_state(what, list_filter):
 		cables.cid as cid,
 		cables.sibling as scid,
 		cables.ctime as ctime,
+		cables.mtime as mtime,
 		cables.length as length,
 		cables.SN as SN,
 		cables.PN as PN,
@@ -1111,6 +1218,7 @@ def list_state(what, list_filter):
 		    row['suspected'],
 		    row['ticket'],
 		    row['ctime'],
+		    row['mtime'],
 		    row['length'] if row['length'] else None,
 		    row['SN'] if row['SN'] else None,
 		    row['PN'] if row['PN'] else None,
@@ -1201,7 +1309,7 @@ def list_state(what, list_filter):
 		mtime,
 		ignore,
 		cid 
-	    from 
+	    FROM 
 		issues 
 	    ORDER BY iid ASC
 	''')
@@ -1266,7 +1374,8 @@ def list_state(what, list_filter):
 		    row['p2_port'],
 		    row['p2_new_plabel']
 		)
- 
+    else:
+	vlog(1, 'unknown list %s request' % (list_filter))
 
 def convert_guid_intstr(guid):
     """ normalise representation of guid to string of an integer 
@@ -1335,7 +1444,10 @@ def run_parse(dump_dir):
 
     def gv(port, key):
 	""" get value or none """
-	return None if not key in port else port[key]
+	if not port:
+	    return None
+	else:
+	    return None if not key in port else str(port[key])
 
     def find_cable(port1, port2):
 	""" Find (and update) cable in db 
@@ -1343,6 +1455,7 @@ def run_parse(dump_dir):
 	port2: ib_diagnostics formatted port
 	"""
 
+	vlog(5, 'find_cable %s/P%s %s/P%s' % (gv(port1,'guid'), gv(port1,'port'), gv(port2,'guid'), gv(port2,'port')))
 	if not port1 and port2:
 	    port1 = port2
 	    port2 = None
@@ -1760,6 +1873,10 @@ def dump_help():
 	Print this help message
  
     list: 
+ 	{0} list action {{c#|S{{guid}}/P{{port}}|cable port label}}  
+ 	{0} list actionable {{c#|S{{guid}}/P{{port}}|cable port label}}  
+	    dump list of actionable cable issues
+ 
 	{0} list issues
 	    dump list of issues
 
