@@ -77,7 +77,7 @@ def parse_port ( label ):
 
     match = ib_portname_type1_regex.match(label)
     if match:
-	vlog(5,'matched: %s' % match.group())
+	vlog(6,'matched: %s' % match.group())
 	if match.group('hca_host_name'):
 	    name = match.group('hca_host_name')
 	    hca = match.group('hca_id')
@@ -634,13 +634,25 @@ def parse_ibdiagnet_csv ( ports, fcsv ):
 		    rowdict = dict(zip(csv_headers, row))
 
 		    if csv_mode == 'START_CABLE_INFO':
-		       rowdict['guid'] = rowdict['PortGuid']
-		       rowdict['port'] = rowdict['PortNum']
-		       resolve_update_port(ports,rowdict)
+			try: #CSV files sometimes have corrupt numbers
+			   buf = int(rowdict['PortGuid'],16)
+			   buf = int(rowdict['PortNum'])
+ 			   rowdict['guid'] = rowdict['PortGuid']
+			   rowdict['port'] = rowdict['PortNum']
+			   resolve_update_port(ports,rowdict) 
+			except ValueError:
+			    vlog(1, 'Invalid guid or port in csv file: %s %s' % (rowdict['PortGuid'], rowdict['PortNum']))
+
 		    elif csv_mode == 'START_PORTS':
-		       rowdict['guid'] = rowdict['NodeGuid']
-		       rowdict['port'] = rowdict['PortNum']
-		       resolve_update_port(ports,rowdict)
+ 		        try:
+			   buf = int(rowdict['NodeGuid'],16)
+			   buf = int(rowdict['PortNum'])
+			   rowdict['guid'] = rowdict['NodeGuid']
+			   rowdict['port'] = rowdict['PortNum']
+			   resolve_update_port(ports,rowdict)
+ 			except ValueError:
+			    vlog(1, 'Invalid guid or port in csv file: %s %s' % (rowdict['NodeGuid'], rowdict['PortNum']))
+ 
 		    #elif csv_mode == 'START_LINKS':
 		    #   rowdict['guid'] = rowdict['NodeGuid1']
 		    #   rowdict['port'] = rowdict['PortNum1']
