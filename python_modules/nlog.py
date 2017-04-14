@@ -25,9 +25,12 @@ def die_now(string):
 def to_hex(string):
     """ Dumps string as hex """
 
-    if len(string) > 0 and isinstance(string, str):
-	#https://stackoverflow.com/questions/12214801/print-a-string-as-hex-bytes
-	return ":".join("{:02x}".format(ord(c)) for c in string)
+    try:
+	if len(string) > 0 and isinstance(string, str):
+	    #https://stackoverflow.com/questions/12214801/print-a-string-as-hex-bytes
+	    return ':'.join(x.encode('hex') for x in string)
+    except Exception as err:
+	vlog(1, 'Unable to convert string to hex')
 
     return None
 
