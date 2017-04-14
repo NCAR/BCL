@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from sys import path, argv
 path.append("/ssg/bin/python_modules/") 
-from nlog import vlog,die_now
+from nlog import vlog,die_now,to_hex,is_ascii
 import re
 import os
 import csv
@@ -606,10 +606,88 @@ def parse_ibdiagnet ( ports, issues, contents ):
 				'source': 'ibdiagnet2.log'
 			    }) 
 
-def parse_ibdiagnet_csv ( ports, fcsv ):
+def sanity_check_string(issues, source, what, string, check_type = "string"):
+    """ sanity check string is ascii or make issue. 
+	returns true if string is good 
+
+	check_type: string, hex integer, integer
+	
+    """
+    if not string:
+	return True
+
+    if check_type in [ 'hex integer', 'integer' ] and len(string) == 0:
+ 	issues.append({ 
+	    'type': 'unknown',
+	    'ports': [],
+	    'issue': '%s is empty instead of numbers' % (what),
+	    'raw': string,
+	    'source': source
+	})  
+	return False
+
+    if not is_ascii(string):
+ 	issues.append({ 
+	    'type': 'unknown',
+	    'ports': [],
+	    'issue': '%s is non-ascii string' % (what),
+	    'raw': 'hexdump: %s' % (to_hex(string)),
+	    'source': source
+	})  
+	return False
+
+    if len(string) > 4096:
+	issues.append({ 
+	    'type': 'unknown',
+	    'ports': [],
+	    'issue': '%s is too long of a string' % (what),
+	    'raw': string,
+	    'source': source
+	})  
+	return False
+
+    if check_type == "integer":
+	try:
+	    buf = int(string)
+	except ValueError:
+	    issues.append({ 
+		'type': 'unknown',
+		'ports': [],
+		'issue': '%s is invalid integer' % (what),
+		'raw': string,
+		'source': source
+	    })  
+	    return False
+    elif check_type == "hex integer":
+ 	try:
+	    buf = int(string, 16)
+	except ValueError:
+	    issues.append({ 
+		'type': 'unknown',
+		'ports': [],
+		'issue': '%s is invalid base 16 integer' % (what),
+		'raw': string,
+		'source': source
+	    })  
+	    return False
+    elif not check_type == "string":
+       vlog(1, 'Invalid check_type: %s' % (check_type))
+
+    return True
+
+
+def parse_ibdiagnet_csv ( ports, issues, fcsv ):
     """ Parse the output of ibdiagnet ibdiagnet2.db_csv
 	Limited to pulling the cable serials and state out currently
     """
+
+    def sc(field, var, ctype = "string"):
+	""" quick sanity check of dict field """
+	if field in var:
+	    return sanity_check_string(issues, 'ibdiagnet2.log', field, var[field], ctype)
+	else:
+	    return True
+
     vlog(4, 'parse_ibdiagnet_csv()')
     csv_mode=None
     csv_headers=None
@@ -634,25 +712,30 @@ def parse_ibdiagnet_csv ( ports, fcsv ):
 		    rowdict = dict(zip(csv_headers, row))
 
 		    if csv_mode == 'START_CABLE_INFO':
-			try: #CSV files sometimes have corrupt numbers
-			   buf = int(rowdict['PortGuid'],16)
-			   buf = int(rowdict['PortNum'])
- 			   rowdict['guid'] = rowdict['PortGuid']
+                        if (
+			    sc('PortGuid', rowdict, "hex integer") and
+			    sc('PortNum', rowdict, "integer") and
+			    sc('SN', rowdict) and
+			    sc('PN', rowdict) and
+			    sc('LengthDesc', rowdict)
+			):
+			
+			   rowdict['guid'] = rowdict['PortGuid']
 			   rowdict['port'] = rowdict['PortNum']
 			   resolve_update_port(ports,rowdict) 
-			except ValueError:
-			    vlog(1, 'Invalid guid or port in csv file: %s %s' % (rowdict['PortGuid'], rowdict['PortNum']))
 
 		    elif csv_mode == 'START_PORTS':
- 		        try:
-			   buf = int(rowdict['NodeGuid'],16)
-			   buf = int(rowdict['PortNum'])
-			   rowdict['guid'] = rowdict['NodeGuid']
-			   rowdict['port'] = rowdict['PortNum']
-			   resolve_update_port(ports,rowdict)
- 			except ValueError:
-			    vlog(1, 'Invalid guid or port in csv file: %s %s' % (rowdict['NodeGuid'], rowdict['PortNum']))
- 
+                        if (
+			    sc('NodeGuid', rowdict, "hex integer") and
+			    sc('PortNum', rowdict, "integer") and
+			    sc('SN', rowdict) and
+			    sc('PN', rowdict) and
+			    sc('LengthDesc', rowdict)
+			):
+			    rowdict['guid'] = rowdict['NodeGuid']
+			    rowdict['port'] = rowdict['PortNum']
+			    resolve_update_port(ports,rowdict)
+
 		    #elif csv_mode == 'START_LINKS':
 		    #   rowdict['guid'] = rowdict['NodeGuid1']
 		    #   rowdict['port'] = rowdict['PortNum1']
@@ -662,9 +745,16 @@ def parse_ibdiagnet_csv ( ports, fcsv ):
 		    #   rowdict['port'] = rowdict['PortNum2']
 		    #   resolve_update_port(ports,rowdict) 
                           
-def parse_ibdiagnet_cables ( ports, contents ):
+def parse_ibdiagnet_cables ( ports, issues, contents ):
     """ Parse the output of ibdiagnet ibdiagnet2.cables """
     vlog(4, 'parse_ibdiagnet_cables()')
+
+    def sc(field, var, ctype = "string"):
+	""" quick sanity check of dict field """
+	if field in var:
+	    return sanity_check_string(issues, 'ibdiagnet2.db_csv', field, var[field], ctype)
+	else:
+	    return True
 
     def add_port(port):
 	if not 'SN' in port or not port['SN']:
@@ -720,7 +810,15 @@ def parse_ibdiagnet_cables ( ports, contents ):
 	else:
 	    port[match.group('field')] = match.group('value')
 
-    if port:
+    if (
+	port and 
+	sc('port', port, 'integer') and
+	sc('lid', port, 'hex integer') and
+	sc('guid', port, 'hex integer') and
+	sc('SN', port) and
+	sc('PN', port) and
+	sc('LengthDesc', port)
+    ):
 	add_port(port)
 
 def find_cable_by_switch_leaf_port ( ports, name, leaf, port ):
