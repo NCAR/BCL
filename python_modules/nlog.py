@@ -22,3 +22,17 @@ def die_now(string):
     elog(string)
     sys.exit(1)
  
+def to_hex(string):
+    """ Dumps string as hex """
+
+    if len(string):
+	#https://stackoverflow.com/questions/12214801/print-a-string-as-hex-bytes
+	return ":".join("{:02x}".format(ord(c)) for c in string)
+
+    return None
+
+def is_ascii(string):
+    """ Determine is string only contains ascii characters """
+    #https://stackoverflow.com/questions/196345/how-to-check-if-a-string-in-python-is-in-ascii
+    return all(ord(c) < 128 for c in string)
+
