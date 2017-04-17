@@ -1039,7 +1039,7 @@ def release_cable(cid, comment, full = False):
 def list_state(what, list_filter):
     """ dump state to user """
 
-    if what == 'action' or what == 'actionable':
+    if what == 'action' or what == 'actions' or what == 'actionable':
         cid=None
 	if list_filter:
 	    b = resolve_cable(list_filter)
@@ -1851,7 +1851,7 @@ def dump_help():
 	Print this help message
  
     list: 
- 	{0} list action {{c#|S{{guid}}/P{{port}}|cable port label}}  
+ 	{0} list action[s] {{c#|S{{guid}}/P{{port}}|cable port label}}  
  	{0} list actionable {{c#|S{{guid}}/P{{port}}|cable port label}}  
 	    dump list of actionable cable issues
  
