@@ -52,8 +52,8 @@ def disable_port( guid, port ):
     GUID must be integer and not hex string
     """
 
-    if not isinstance(guid, (int)) or not isinstance(port, (int)):
-	vlog(1, 'guid/port must be ints. given %s/P%s' % (guid, port))
+    if not isinstance(guid, (int, long)) or not isinstance(port, (int)):
+	vlog(1, 'guid/port must be ints. given %s/P%s %s/%s' % (guid, port, type(guid), type(port)))
 	return None
 
     vlog(2, 'Disabling %s/P%s in fabric' % (hex(guid), port))
@@ -64,8 +64,8 @@ def enable_port( guid, port ):
     GUID must be integer and not hex string
     """
 
-    if not isinstance(guid, (int)) or not isinstance(port, (int)):
-	vlog(1, 'guid/port must be ints. given %s/P%s' % (guid, port))
+    if not isinstance(guid, (int, long)) or not isinstance(port, (int)):
+	vlog(1, 'guid/port must be ints. given %s/P%s %s/%s' % (guid, port, type(guid), type(port)))
 	return None
 
     vlog(2, 'Enabling %s/P%s in fabric' % (hex(guid), port))
