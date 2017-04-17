@@ -1968,7 +1968,7 @@ def dump_help():
 	    YES: disable creating and updating tickets (may cause extra errors)
 	    NO: create tickets
 
-	BAD_CABLE_DB={path to sqlite db defailt=/etc/ncar_bad_cable_list.sqlite}
+	BAD_CABLE_DB={{path to sqlite db defailt=/etc/ncar_bad_cable_list.sqlite}}
 	    Warning: will autocreate if non-existant or empty
 	    Override which sqlite DB to use.
  
@@ -2003,50 +2003,53 @@ else:
     CMD=argv[1].lower()
     if CMD == 'parse':
 	run_parse(argv[2])  
-    if CMD == 'load_overrides':
-	load_overrides(argv[2])   
-    elif CMD == 'list':
-	lfilter = None
-	if len(argv) == 4:
-	    lfilter = argv[3]
-	list_state(argv[2], lfilter)  
-    elif CMD == 'remove':
-	for cid in resolve_cables(argv[3:]):
-	    remove_cable(cid, argv[2]) 
-    elif CMD == 'disable':
-	for cid in resolve_cables(argv[3:]):
-	    disable_cable(cid, argv[2])
-    elif CMD == 'enable':
-	for cid in resolve_cables(argv[3:]):
-	    enable_cable(cid, argv[2]) 
-    elif CMD == 'casg':
-	for cid in resolve_cables(argv[3:]):
-	    send_casg(cid, argv[2]) 
-    elif CMD == 'add':
-	for cid in resolve_cables(argv[3:]):
-	    add_issue('Manual Entry', cid, argv[2], None, 'admin', int(time.time()))
-    elif CMD == 'release':
-	for cid in resolve_cables(argv[3:]):
-	    release_cable(cid, argv[2])
-    elif CMD == 'rejuvenate':
-	for cid in resolve_cables(argv[3:]):
-	    release_cable(cid, argv[2], True)
-    elif CMD == 'ignore':
-	for iid in resolve_issues(argv[3:]):
-	    ignore_issue(argv[2], iid)
-    elif CMD == 'honor':
-	for iid in resolve_issues(argv[3:]):
-	    honor_issue(argv[2], iid) 
-    elif CMD == 'comment':
-	for cid in resolve_cables(argv[3:]):
-	    comment_cable(cid, argv[2]) 
-    elif CMD == 'sibling':
-	source_cid = resolve_cable(argv[3]) 
-	if source_cid:
-	    for cid in resolve_cables(argv[4:]):
-		add_sibling(cid, source_cid['cid'], argv[2]) 
-#   else:
-	#dump_help() 
+    elif len(argv) < 3:
+	dump_help()  
+    else:
+	if CMD == 'load_overrides':
+	    load_overrides(argv[2])   
+	elif CMD == 'list':
+	    lfilter = None
+	    if len(argv) == 4:
+		lfilter = argv[3]
+	    list_state(argv[2], lfilter)  
+	elif CMD == 'remove':
+	    for cid in resolve_cables(argv[3:]):
+		remove_cable(cid, argv[2]) 
+	elif CMD == 'disable':
+	    for cid in resolve_cables(argv[3:]):
+		disable_cable(cid, argv[2])
+	elif CMD == 'enable':
+	    for cid in resolve_cables(argv[3:]):
+		enable_cable(cid, argv[2]) 
+	elif CMD == 'casg':
+	    for cid in resolve_cables(argv[3:]):
+		send_casg(cid, argv[2]) 
+	elif CMD == 'add':
+	    for cid in resolve_cables(argv[3:]):
+		add_issue('Manual Entry', cid, argv[2], None, 'admin', int(time.time()))
+	elif CMD == 'release':
+	    for cid in resolve_cables(argv[3:]):
+		release_cable(cid, argv[2])
+	elif CMD == 'rejuvenate':
+	    for cid in resolve_cables(argv[3:]):
+		release_cable(cid, argv[2], True)
+	elif CMD == 'ignore':
+	    for iid in resolve_issues(argv[3:]):
+		ignore_issue(argv[2], iid)
+	elif CMD == 'honor':
+	    for iid in resolve_issues(argv[3:]):
+		honor_issue(argv[2], iid) 
+	elif CMD == 'comment':
+	    for cid in resolve_cables(argv[3:]):
+		comment_cable(cid, argv[2]) 
+	elif CMD == 'sibling':
+	    source_cid = resolve_cable(argv[3]) 
+	    if source_cid:
+		for cid in resolve_cables(argv[4:]):
+		    add_sibling(cid, source_cid['cid'], argv[2]) 
+	else:
+	    dump_help() 
 
 release_db()
 
