@@ -26,7 +26,7 @@ def initialize_db():
     global BAD_CABLE_DB, SQL_CONNECTION, SQL
 
     try:
-	SQL_CONNECTION = sqlite3.connect(BAD_CABLE_DB, isolation_level=None)
+	SQL_CONNECTION = sqlite3.connect(BAD_CABLE_DB)
 	SQL_CONNECTION .row_factory = sqlite3.Row
 	SQL = SQL_CONNECTION.cursor()
     except Exception as err:
@@ -34,7 +34,6 @@ def initialize_db():
 
     SQL.executescript("""
 	PRAGMA foreign_keys = ON;
-	BEGIN;
 
  	create table if not exists cables (
 	    cid INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,7 +122,6 @@ def initialize_db():
 	    FOREIGN KEY (cid) REFERENCES cables(cid)
 	);
 
-	COMMIT;
     """)
 	    
 
@@ -208,7 +206,6 @@ def add_sibling(cid, source_cid, comment):
 
 	disable_cable_ports(cid)
 
-	SQL.execute('BEGIN;')
 	SQL.execute('''
 	    UPDATE
 		cables 
@@ -223,7 +220,6 @@ def add_sibling(cid, source_cid, comment):
 		comment,
 		cid
 	));
-	SQL.execute('COMMIT;')
 
 	msg =  '''
 		Cable %s has been disabled in fabric. Cable marked as sibling to %s.
@@ -252,7 +248,6 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 
     iid = None
 
-    SQL.execute('BEGIN;')
     #find if this exact issue already exists
     SQL.execute('''
 	SELECT 
@@ -428,7 +423,6 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 		raw
 	    ))
 
-    SQL.execute('COMMIT;')
 
 def resolve_cable(needle):
     """ Resolve user inputed string for cable (needle)
@@ -567,7 +561,6 @@ def resolve_issues(user_input):
 def ignore_issue(comment, iid):
     """ Ignore issue """
 
-    SQL.execute('BEGIN;')
     SQL.execute('''
 	UPDATE
 	    issues 
@@ -576,14 +569,12 @@ def ignore_issue(comment, iid):
 	WHERE
 	    iid = ?
 	;''', (iid,));
-    SQL.execute('COMMIT;')
 
     vlog(2, 'issue i%s will be ignored: %s' % (iid, comment))
 
 def honor_issue(comment, iid):
     """ Honor issue """
 
-    SQL.execute('BEGIN;')
     SQL.execute('''
 	UPDATE
 	    issues 
@@ -592,7 +583,6 @@ def honor_issue(comment, iid):
 	WHERE
 	    iid = ?
 	;''', (iid,));
-    SQL.execute('COMMIT;')
 
     vlog(2, 'issue i%s will be honored: %s' % (iid, comment))
 
@@ -613,7 +603,6 @@ def comment_cable(cid, comment):
 	cid,
     ))
 
-    SQL.execute('BEGIN;')
     for row in SQL.fetchall():
 	vlog(2, 'add comment to cable c%s: %s' % (cid, comment))
 
@@ -633,7 +622,6 @@ def comment_cable(cid, comment):
 	    EV.add_resolver_comment(row['ticket'], 'Bad Cable Comment:\n%s' % comment)
 	    vlog(3, 'Updated Extraview Ticket %s for c%s with comment: %s' % (row['ticket'], cid, comment))
 
-    SQL.execute('COMMIT;')
 
 def enable_cable_ports(cid):
     """ Enables cable ports in fabric """
@@ -660,7 +648,6 @@ def remove_cable(cid, comment):
     
     release_cable(cid, comment)
     
-    SQL.execute('BEGIN;')
     SQL.execute('''
         UPDATE
             cables 
@@ -674,7 +661,6 @@ def remove_cable(cid, comment):
             comment,
             cid
     ));
-    SQL.execute('COMMIT;') 
     
     vlog(2, 'Marked c%s as removed: %s' % (cid, comment))
  
@@ -864,7 +850,6 @@ def enable_cable(cid, comment):
 
 	if row['state'] == 'disabled':
 	    vlog(3, 'Disabled cable c%s returned to suspect state' % (cid))
-	    SQL.execute('BEGIN;')
 	    SQL.execute('''
 		UPDATE
 		    cables 
@@ -877,7 +862,6 @@ def enable_cable(cid, comment):
 		    comment,
 		    cid
 	    ));
-	    SQL.execute('COMMIT;')
 
  	if row['ticket'] and not DISABLE_TICKETS:
 	    EV.add_resolver_comment(row['ticket'], 'Cable %s enabled.' % (row['flabel']))
@@ -915,7 +899,6 @@ def disable_cable(cid, comment):
 	vlog(3, 'disabling cable c%s.' % (cid))
 
  	if row['state'] != 'sibling': 
-	    SQL.execute('BEGIN;')
 	    SQL.execute('''
 		UPDATE
 		    cables 
@@ -928,7 +911,6 @@ def disable_cable(cid, comment):
 		    comment,
 		    cid
 	    ));
-	    SQL.execute('COMMIT;')
 
 	disable_cable_ports(cid)
 
@@ -984,7 +966,6 @@ def release_cable(cid, comment, full = False):
 
         enable_cable_ports(cid)
 
-	SQL.execute('BEGIN;')
 	SQL.execute('''
 	    UPDATE
 		cables 
@@ -1002,7 +983,6 @@ def release_cable(cid, comment, full = False):
 		None if full else row['ticket'],
 		cid
 	));
-	SQL.execute('COMMIT;')
 
 	ticket = row['ticket']
 	flabel = row['flabel']
@@ -1395,7 +1375,6 @@ def load_overrides(path_csv):
 	return None if not key in row else str(row[key])
 
     count = 0
-    SQL.execute('BEGIN;');
     with open(path_csv, 'rb') as csvfile:
 	for row in csv.DictReader(csvfile, delimiter=',', quotechar='\"'):
 	    SQL.execute('''
@@ -1439,7 +1418,6 @@ def load_overrides(path_csv):
 
 	    count += 1
                                 
-    SQL.execute('COMMIT;');
     vlog(3, 'loaded %s cable overrides' % (count))
 
 def run_parse(dump_dir):
@@ -1704,8 +1682,6 @@ def run_parse(dump_dir):
     ibsp = cluster_info.get_ib_speed()
     ib_diagnostics.find_underperforming_cables ( ports, issues, ibsp['speed'], ibsp['width'])
 
-    SQL.execute('BEGIN;')
-
     #add every known cable to database
     #slow but keeps sane list of all cables forever for issue tracking
     known_cables=[] #track every that is found
@@ -1726,8 +1702,6 @@ def run_parse(dump_dir):
 	    port2['cable_id'] = cid
 
 	known_cables.append(cid)
-
-    SQL.execute('COMMIT;')
 
     #check new cables (outside of begin/commit)
     for cable in new_cables:
