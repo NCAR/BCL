@@ -26,7 +26,7 @@ def initialize_db():
     global BAD_CABLE_DB, SQL_CONNECTION, SQL
 
     try:
-	SQL_CONNECTION = sqlite3.connect(BAD_CABLE_DB)
+	SQL_CONNECTION = sqlite3.connect(BAD_CABLE_DB, isolation_level=None)
 	SQL_CONNECTION .row_factory = sqlite3.Row
 	SQL = SQL_CONNECTION.cursor()
     except Exception as err:
