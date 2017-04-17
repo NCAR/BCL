@@ -373,8 +373,8 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 		tid = EV.create( 
 		    'ssgev',
 		    'ssg',
-		    'nate',
-		    '-----TEST----- %s: Bad Cable %s' % (cluster_info.get_cluster_name_formal(), cname), 
+		    None,
+		    '%s: Bad Cable %s' % (cluster_info.get_cluster_name_formal(), cname), 
 		    '%s has been added to the %s bad cable list.' % (
 			cname, 
 			cluster_info.get_cluster_name_formal()
@@ -388,7 +388,7 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 		})
 		vlog(3, 'Opened Extraview Ticket %s for bad cable %s' % (tid, cid))
 	    elif not DISABLE_TICKETS: 
-		EV.assign_group(tid, 'ssg', 'nate', {
+		EV.assign_group(tid, 'ssg', None, {
 		    'COMMENTS':	'''
 			Ticket has been reopened for repeat offender bad cable.
 
@@ -809,9 +809,8 @@ def send_casg(cid, comment):
 	else:
  	    label = 'Cable Label: %s' % (flabel)
 
-	EV.assign_group(tid, 'ssg', 'nate', {
+	EV.assign_group(tid, 'ssg', None, {
 	    'COMMENTS':	'''
-		--- TEST TICKET: PLEASE RETURN TO SSG ---
 		CASG,
 
 		The follow cable has been marked for repairs and has been disabled.
@@ -1838,8 +1837,8 @@ def run_parse(dump_dir):
 	tid = EV.create( 
 	    'ssgev',
 	    'ssg',
-	    'nate',
-	    '-----TEST----- %s: Infinband Issues' % (cluster_info.get_cluster_name_formal()), 
+	    None,
+	    '%s: Infinband Issues' % (cluster_info.get_cluster_name_formal()), 
 	    '''
 	    %s issues have been detected against the Infinband fabric for %s.
 	    ''' % (
