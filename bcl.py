@@ -527,6 +527,9 @@ def resolve_cables(user_input):
 
     cids = []
 
+    if not user_input:
+	return [ None ]
+
     for needle in user_input:
 	cret = resolve_cable(needle)
 	vlog(4, 'resolving %s to %s' %(needle, cret))
@@ -1040,16 +1043,6 @@ def list_state(what, list_filter):
     """ dump state to user """
 
     if what == 'action' or what == 'actions' or what == 'actionable':
-        cid=None
-	if list_filter:
-	    b = resolve_cable(list_filter)
-	    if b:
-		cid = b['cid']
-		vlog(5, 'resolved %s to c%s' % (list_filter, cid))
-	    else:
-		vlog(1, 'unable to resolve %s' % list_filter)
-		return
-
 	f='{0:<10}{1:<10}{2:<15}{3:<12}{4:<15}{5:<15}{6:<70}'
  	print f.format(
 		"cable_id",
@@ -1061,84 +1054,82 @@ def list_state(what, list_filter):
 		"Firmware Label (node_desc)"
 	    )             
 
-  	SQL.execute('''
-	    SELECT 
-		cid,
-		length,
-		SN,
-		PN,
-		state,
-		comment,
-		suspected,
-		ticket,
-		flabel,
-		mtime
-	    FROM 
-		cables
-	    WHERE
-		( 
-		    ? IS NULL and
-		    state != 'watch' and
-		    state != 'removed' and
-		    sibling IS NULL
-		) or cid = ? 
-	    ORDER BY 
-		ctime 
-	''', (
-	    cid,
-	    cid
-	))
-
-	for row in SQL.fetchall():
-	    print f.format(
-		    'c%s' % (row['cid']),
-		    row['state'],
-		    row['ticket'],
-		    row['length'] if row['length'] else None,
-		    row['SN'] if row['SN'] else None,
-		    row['PN'] if row['PN'] else None,
-		    row['flabel']
-		) 
-	    print '\tSuspected %s times. Last went suspect on %s' % (
-		    row['suspected'], 
-		    datetime.datetime.fromtimestamp(row['mtime']).strftime('%Y-%m-%d %H:%M:%S')
-		)
-	    print '\tComment: %s' % (row['comment'])
-
+	for cid in resolve_cables(list_filter):
 	    SQL.execute('''
 		SELECT 
-		    iid,
-		    type,
-		    issue,
-		    raw,
-		    source,
-		    mtime,
-		    ignore,
-		    cid 
+		    cid,
+		    length,
+		    SN,
+		    PN,
+		    state,
+		    comment,
+		    suspected,
+		    ticket,
+		    flabel,
+		    mtime
 		FROM 
-		    issues 
+		    cables
 		WHERE
-		    ignore = 0 and 
-		    cid = ? and
-		    mtime >= ?
-		ORDER BY iid ASC
+		    ( 
+			? IS NULL and
+			state != 'watch' and
+			state != 'removed' and
+			sibling IS NULL
+		    ) or cid = ? 
+		ORDER BY 
+		    ctime 
 	    ''', (
-		int(row['cid']),
-		int(row['mtime']),
+		cid,
+		cid
 	    ))
 
-	    for irow in SQL.fetchall():
-		print '\tIssue %s: %s' % (
-			'i%s' % irow['iid'],
-			irow['issue']
+	    for row in SQL.fetchall():
+		print f.format(
+			'c%s' % (row['cid']),
+			row['state'],
+			row['ticket'],
+			row['length'] if row['length'] else None,
+			row['SN'] if row['SN'] else None,
+			row['PN'] if row['PN'] else None,
+			row['flabel']
 		    ) 
+		print '\tSuspected %s times. Last went suspect on %s' % (
+			row['suspected'], 
+			datetime.datetime.fromtimestamp(row['mtime']).strftime('%Y-%m-%d %H:%M:%S') if row['mtime'] > 0 else None
+		    )
+		print '\tComment: %s' % (row['comment'])
 
+		SQL.execute('''
+		    SELECT 
+			iid,
+			type,
+			issue,
+			raw,
+			source,
+			mtime,
+			ignore,
+			cid 
+		    FROM 
+			issues 
+		    WHERE
+			ignore = 0 and 
+			cid = ? and
+			mtime >= ?
+		    ORDER BY iid ASC
+		''', (
+		    int(row['cid']),
+		    int(row['mtime']) if row['mtime'] else None,
+		))
 
+		for irow in SQL.fetchall():
+		    print '\tIssue %s: %s' % (
+			    'i%s' % irow['iid'],
+			    irow['issue']
+			) 
 
-	    print ' '
+		print ' '
 
-
-    elif what == 'cables':
+    elif what == 'cables' or what == 'cable':
         f='{0:<10}{1:<10}{2:10}{3:<12}{4:<15}{5:<15}{6:<15}{7:<15}{8:<15}{9:<15}{10:<50}{11:<50}{12:<50}'
  	print f.format(
 		"cable_id",
@@ -1155,74 +1146,64 @@ def list_state(what, list_filter):
 		"Firmware Label (node_desc)",
 		"Physical Label"
 	    )            
- 	SQL.execute('''
-	    SELECT 
-		cables.cid as cid,
-		cables.sibling as scid,
-		cables.ctime as ctime,
-		cables.mtime as mtime,
-		cables.length as length,
-		cables.SN as SN,
-		cables.PN as PN,
-		cables.state as state,
-		cables.comment as comment,
-		cables.suspected as suspected,
-		cables.ticket as ticket,
-		cables.flabel as flabel,
-		cables.plabel as plabel,
-		cp1.flabel as cp1_flabel,
-		cp1.plabel as cp1_plabel,
-		cp2.flabel as cp2_flabel,
-		cp2.plabel as cp2_plabel
-	    from 
-		cables
+	for cid in resolve_cables(list_filter):
+	    SQL.execute('''
+		SELECT 
+		    cables.cid as cid,
+		    cables.sibling as scid,
+		    cables.ctime as ctime,
+		    cables.mtime as mtime,
+		    cables.length as length,
+		    cables.SN as SN,
+		    cables.PN as PN,
+		    cables.state as state,
+		    cables.comment as comment,
+		    cables.suspected as suspected,
+		    cables.ticket as ticket,
+		    cables.flabel as flabel,
+		    cables.plabel as plabel,
+		    cp1.flabel as cp1_flabel,
+		    cp1.plabel as cp1_plabel,
+		    cp2.flabel as cp2_flabel,
+		    cp2.plabel as cp2_plabel
+		from 
+		    cables
 
-	    INNER JOIN
-		cable_ports as cp1
-	    ON
-		cables.cid = cp1.cid and
-		( ? IS NULL or cables.state = ? )
+		INNER JOIN
+		    cable_ports as cp1
+		ON
+		    cables.cid = cp1.cid and
+		    ( ? IS NULL or cables.cid = ? )
 
-	    LEFT OUTER JOIN
-		cable_ports as cp2
-	    ON
-		cables.cid = cp2.cid and
-		cp2.cpid != cp1.cpid
+		LEFT OUTER JOIN
+		    cable_ports as cp2
+		ON
+		    cables.cid = cp2.cid and
+		    cp2.cpid != cp1.cpid
 
-	    GROUP BY cables.cid
-	''', (
-	    list_filter, list_filter
-	))
+		GROUP BY cables.cid
+	    ''', (
+		cid, cid
+	    ))
 
-	for row in SQL.fetchall():
-	    print f.format(
-		    'c%s' % (row['cid']),
-		    'c%s' % (row['scid']) if row['scid'] else None,
-		    row['state'],
-		    row['suspected'],
-		    row['ticket'],
-		    row['ctime'],
-		    row['mtime'],
-		    row['length'] if row['length'] else None,
-		    row['SN'] if row['SN'] else None,
-		    row['PN'] if row['PN'] else None,
-		    row['comment'],
-		    row['flabel'],
-		    row['plabel']
-		)
+	    for row in SQL.fetchall():
+		print f.format(
+			'c%s' % (row['cid']),
+			'c%s' % (row['scid']) if row['scid'] else None,
+			row['state'],
+			row['suspected'],
+			row['ticket'],
+			row['ctime'],
+			row['mtime'],
+			row['length'] if row['length'] else None,
+			row['SN'] if row['SN'] else None,
+			row['PN'] if row['PN'] else None,
+			row['comment'],
+			row['flabel'],
+			row['plabel']
+		    )
 
-    elif what == 'ports':
-	cid=None
-	cpid=None
-	if list_filter:
-	    b = resolve_cable(list_filter)
-	    if b:
-		cid = b['cid']
-		cpid = b['cpid']
-	    else:
-		vlog(1, 'unable to resolve %s' % list_filter)
-		return
-
+    elif what == 'ports' or what == 'port':
         f='{0:<10}{1:<10}{2:<25}{3:<7}{4:<7}{5:<50}{6:<50}{7:<50}'
  	print f.format(
 		"cable_id",
@@ -1235,40 +1216,38 @@ def list_state(what, list_filter):
 		"Physical Label"
 	    ) 
 
- 	SQL.execute('''
-	    SELECT 
-		cid,
-		cpid,
-		plabel,
-		flabel,
-		guid,
-		port,
-		hca,
-		name
-	    FROM 
-		cable_ports 
-	    WHERE
-		? IS NULL or
-		cpid = ? or 
-		cid = ?
-	    ORDER BY cpid ASC
-	''', (
-	    0 if cid or cpid else None,
-	    cpid,
-	    cid
-	))
+	for cid in resolve_cables(list_filter):
+	    SQL.execute('''
+		SELECT 
+		    cid,
+		    cpid,
+		    plabel,
+		    flabel,
+		    guid,
+		    port,
+		    hca,
+		    name
+		FROM 
+		    cable_ports 
+		WHERE
+		    ? IS NULL or
+		    cid = ?
+		ORDER BY cpid ASC
+	    ''', (
+		cid, cid
+	    ))
 
-	for row in SQL.fetchall():
-	    print f.format(
-		    'c%s' % row['cid'],
-		    'p%s' % row['cpid'],
-		    hex(int(row['guid'])),
-		    row['port'],
-		    'True' if row['hca'] else 'False',
-		    row['name'],
-		    row['flabel'],
-		    row['plabel']
-		)
+	    for row in SQL.fetchall():
+		print f.format(
+			'c%s' % row['cid'],
+			'p%s' % row['cpid'],
+			hex(int(row['guid'])),
+			row['port'],
+			'True' if row['hca'] else 'False',
+			row['name'],
+			row['flabel'],
+			row['plabel']
+		    )
 
     elif what == 'issues':
         f='{0:<10}{1:<15}{2:<10}{3:<10}{4:<15}{5:<20}{6:<100}{7:<50}'
@@ -1283,32 +1262,36 @@ def list_state(what, list_filter):
 		"raw error"
 	    ) 
 
- 	SQL.execute('''
-	    SELECT 
-		iid,
-		type,
-		issue,
-		raw,
-		source,
-		mtime,
-		ignore,
-		cid 
-	    FROM 
-		issues 
-	    ORDER BY iid ASC
-	''')
+	for cid in resolve_cables(list_filter):
+	    SQL.execute('''
+		SELECT 
+		    iid,
+		    type,
+		    issue,
+		    raw,
+		    source,
+		    mtime,
+		    ignore,
+		    cid 
+		FROM 
+		    issues 
+		WHERE
+		    ? IS NULL OR
+		    cid = ?
+		ORDER BY iid ASC
+	    ''', (cid, cid))
 
-	for row in SQL.fetchall():
-	    print f.format(
-		    'i%s' % row['iid'],
-		    row['type'],
-		    'c%s' % row['cid'] if row['cid'] else None,
-		    'False' if row['ignore'] == 0 else 'True',
-		    row['mtime'],
-		    row['source'],
-		    row['issue'],
-		    row['raw'].replace("\n", "\\n") if row['raw'] else None
-		)
+	    for row in SQL.fetchall():
+		print f.format(
+			'i%s' % row['iid'],
+			row['type'],
+			'c%s' % row['cid'] if row['cid'] else None,
+			'False' if row['ignore'] == 0 else 'True',
+			row['mtime'],
+			row['source'],
+			row['issue'],
+			row['raw'].replace("\n", "\\n") if row['raw'] else None
+		    )
     elif what == 'overrides':
         f='{0:<10}{1:<50}{2:<25}{3:<7}{4:<25}{5:<25}{6:<7}{7:<25}'
  	print f.format(
@@ -1849,65 +1832,65 @@ def dump_help():
 
     help: {0}
 	Print this help message
- 
+
     list: 
- 	{0} list action[s] {{c#|S{{guid}}/P{{port}}|cable port label}}  
- 	{0} list actionable {{c#|S{{guid}}/P{{port}}|cable port label}}  
+ 	{0} list action[s] {{cables}}+ 
+ 	{0} list actionable {{cables}}+ 
 	    dump list of actionable cable issues
  
-	{0} list issues
+	{0} list issues {{cables}}+ 
 	    dump list of issues
 
- 	{0} list cables [watch|suspect|disabled|sibling|removed]
+ 	{0} list cables {{cables}}+
 	    dump list of cables
 
-  	{0} list ports {{c#|S{{guid}}/P{{port}}|cable port label}} 
+  	{0} list ports {{cables}}+ 
 	    dump list of cable ports
 
  	{0} list overrides
 	    dump list of cable label overrides
 
-    add: {0} add {{issue description}} {{c#|S{{guid}}/P{{port}}|cable port label}}+
+    add: {0} add {{issue description}} {{cables}}+ 
 	Note: Use GUID/Port syntax or cable id (c#) to avoid applying to wrong cable
 	add cable to bad node list 
 	open EV against node in SSG queue or Assign to SSG queue
 
-    sibling: {0} sibiling {{(bad cable id) c#}} {{c#|S{{guid}}/P{{port}}|sibling cable port label}}+
+    sibling: {0} sibiling {{(bad cable id) c#}} {{cables}}+ 
 	mark cable as sibling to bad cable if sibling is in watch state
 	disables sibling cable in fabric
 
-    disable: {0} disable 'comment' {{(bad cable id) c#}}+
+    disable: {0} disable 'comment' {{cables}}+ 
 	disables cable in fabric
 	add cable to bad cable list (if not one already) unless cable is sibling
 
-    enable: {0} enable 'comment' {{(cable id) c#}}+
+    enable: {0} enable 'comment' {{cables}}+ 
 	Note: Only use this command for debugging cable issues
 	enables cable in fabric
 	puts a cable in disabled state back into suspect state (use release to set cable state to watch)
  
-    casg: {0} casg {{comment}} {{(bad cable id) c#}}+
+    casg: {0} casg {{comment}} {{cables}}+ 
 	disables cable in fabric
 	send extraview ticket to CASG
 
-    release: {0} release {{comment}} {{(bad cable id) c#}}+
+    release: {0} release {{comment}} {{cables}}+ 
 	enable cable in fabric
 	set cable state to watch
 	close Extraview ticket
 	release any sibling cables
 	release sibling status of cable (don't consider cable as sibling anymore)
 
-    rejuvenate: {0} rejuvenate {{comment}} {{(bad cable id) c#}}+
+    rejuvenate: {0} rejuvenate {{comment}} {{cables}}+ 
 	Note: only use this if the cable has been replaced and it was not autodetected
 	release cable
 	sets the suspected count back to 0
 	disassociate Extraview ticket from Cable
 
-    remove: {0} remove {{comment}} {{(cable id) c#}}+
+    remove: {0} remove {{comment}} {{cables}}+ 
 	Note: only use this if the cable has been removed/replaced permanently
 	release cable
 	sets the cable as removed (disables all future detection against cable)
 
-    comment: {0} comment {{comment}} {{(bad cable id) c#}}+
+    comment: {0} comment {{comment}} {{cables}}+ 
 	add comment to bad cable's extraview ticket 
 
     ignore: {0} ignore {{comment}} {{(issue id) i#}}+
@@ -1932,6 +1915,12 @@ def dump_help():
 	    'port2 port number'
 	    'port2 new physical label'
 	any cable discovered will have physical label overrode
+
+    Cable Labels Types:
+	cable id: c#
+	guid/port pairs: S{{guid}}/P{{port}}
+	label: cable port label
+	states: @watch, @suspect, @disabled, @sibling, @removed
 
     Optional Environment Variables:
 	VERBOSE={{1-5 default=3}}
@@ -1983,10 +1972,7 @@ else:
 	if CMD == 'load_overrides':
 	    load_overrides(argv[2])   
 	elif CMD == 'list':
-	    lfilter = None
-	    if len(argv) == 4:
-		lfilter = argv[3]
-	    list_state(argv[2], lfilter)  
+	    list_state(argv[2].lower(), argv[3:] if len(argv) > 3 else None)  
 	elif CMD == 'remove':
 	    for cid in resolve_cables(argv[3:]):
 		remove_cable(cid, argv[2]) 
