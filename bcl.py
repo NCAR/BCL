@@ -532,7 +532,7 @@ def resolve_cables(user_input):
 
     state_match = re.compile(
 	r"""
-	    ^\s*@(?P<state>\w+)\s*$
+	    ^\s*@(?:bad:|)(?P<state>\w+)\s*$
 	""",
 	re.VERBOSE
 	) 
