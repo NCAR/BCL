@@ -530,14 +530,38 @@ def resolve_cables(user_input):
     if not user_input:
 	return [ None ]
 
-    for needle in user_input:
-	cret = resolve_cable(needle)
-	vlog(4, 'resolving %s to %s' %(needle, cret))
+    state_match = re.compile(
+	r"""
+	    ^\s*@(?P<state>\w+)\s*$
+	""",
+	re.VERBOSE
+	) 
 
-	if cret and not cret['cid'] in cids:
-	    cids.append(cret['cid'])
+    for needle in user_input:
+	match = state_match.match(needle)
+	if match:
+	    SQL.execute('''
+		SELECT 
+		    cables.cid
+		FROM 
+		    cables
+		WHERE
+		    cables.state = ?
+	    ''',(
+		match.group('state'),
+	    ))
+
+	    for row in SQL.fetchall():
+		if row['cid'] and not row['cid'] in cids:
+		    cids.append(row['cid'])
 	else:
-	    vlog(2, 'unable to resolve %s to a known cable or port' % (needle))
+	    cret = resolve_cable(needle)
+	    vlog(4, 'resolving %s to %s' %(needle, cret))
+
+	    if cret and not cret['cid'] in cids:
+		cids.append(cret['cid'])
+	    else:
+		vlog(2, 'unable to resolve %s to a known cable or port' % (needle))
 
     return cids
 
