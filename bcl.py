@@ -1427,6 +1427,8 @@ def load_overrides(path_csv):
                                 
     vlog(3, 'loaded %s cable overrides' % (count))
 
+
+
 def run_parse(dump_dir):
     """ Run parse mode against a dump directory """
     global EV, SQL
@@ -1438,6 +1440,139 @@ def run_parse(dump_dir):
 	else:
 	    return None if not key in port else str(port[key])
 
+
+    def update_cable_override(port1, port2, update_cid = None):
+	""" Searches overrides table for new physical labels and applies them 
+	    skips update if update_cid is not set
+	"""
+	def gpv(port, key):
+	    """ get value or none. overrides name to pretty name """
+	    if not port:
+		return None
+	    if key == "name":
+		return ib_diagnostics.port_name_pretty(port).lower()
+	    else:
+		return None if not key in port else str(port[key]).lower()
+
+        def resolve_cable_override(port1, port2):
+	    """ Searches overrides table for new physical labels """
+	    if not port2:
+		return None
+     
+	    SQL.execute('''
+		SELECT 
+		    cl.new_plabel as cable_plabel,
+		    p1.new_plabel as p1_new_plabel,
+		    p2.new_plabel as p2_new_plabel
+		FROM 
+		    cable_labels as cl
+		INNER JOIN
+		    cable_port_labels as p1
+		ON
+		    cl.clid = p1.clid and
+		    lower(p1.flabel) = ? and 
+		    p1.port = ?
+		INNER JOIN
+		    cable_port_labels as p2
+		ON
+		    cl.clid = p2.clid and
+		    p1.cplid != p2.cplid and
+		    lower(p2.flabel) = ? and 
+		    p2.port = ?             
+		LIMIT 1
+	    ''', (
+		gv(port1,'name'),
+		gv(port1,'port'),
+		gv(port2,'name'),
+		gv(port2,'port')
+	    ))
+	    for row in SQL.fetchall():
+		return {
+		    'plabel': row['cable_plabel'],
+		    'port1_plabel':  row['p1_new_plabel'],
+		    'port2_plabel':  row['p2_new_plabel'],
+		}
+	 
+	    return None
+
+	if not port2:
+	    return None
+
+	overrides = resolve_cable_override({
+	    'name': gpv(port1,'name'),
+	    'port': gpv(port1,'port'),
+	},{
+	    'name': gpv(port2,'name'),
+	    'port': gpv(port2,'port'),
+	})
+
+	if not update_cid or not overrides:
+	    return overrides
+
+	SQL.execute('''
+	    SELECT 
+		cables.cid,
+		cables.plabel,
+		cp1.cpid as cp1_cpid,
+		cp2.cpid as cp2_cpid,
+		cp2.plabel as cp2_plabel,
+		cp1.plabel as cp1_plabel
+	    FROM 
+		cables
+
+	    INNER JOIN
+		cable_ports as cp1
+	    ON
+		cables.cid = ? and
+		cables.cid = cp1.cid
+
+	    LEFT OUTER JOIN
+		cable_ports as cp2
+	    ON
+		cables.cid = cp2.cid and
+		cp1.cpid != cp2.cpid
+		 
+	    LIMIT 1
+	''',(
+	    update_cid,
+	))
+
+	for row in SQL.fetchall():
+	    if (
+		row['plabel'] != overrides['plabel'] or
+		row['cp1_plabel'] != overrides['port1_plabel'] or
+		row['cp2_plabel'] != overrides['port2_plabel']
+	    ):
+		SQL.execute('''
+		    UPDATE
+			cables 
+		    SET
+			plabel = ?
+		    WHERE
+			cid = ?
+		    ;''', (
+			overrides['plabel'],
+			row['cid'],
+		));
+		vlog(4, 'updating plabel for c%s from %s to %s' % (row['cid'], row['plabel'], overrides['plabel']))
+
+		for cpid,plabel in { 
+		    row['cp1_cpid']: overrides['port1_plabel'], 
+		    row['cp2_cpid']: overrides['port2_plabel'] 
+		    }.iteritems():
+			SQL.execute('''
+			    UPDATE
+				cable_ports 
+			    SET
+				plabel = ?
+			    WHERE
+				cpid = ?
+			    ;''', (
+				plabel,
+				cpid,
+			));
+			vlog(4, 'updating plabel for p%s to %s' % (cpid, plabel))
+         
     def find_cable(port1, port2):
 	""" Find (and update) cable in db 
 	port1: ib_diagnostics formatted port
@@ -1503,52 +1638,18 @@ def run_parse(dump_dir):
     def insert_cable(port1, port2, timestamp):
 	""" insert new cable into db """
 
-	def gpv(port, key):
-	    """ get value or none """
-	    if not port:
-		return None
-	    if key == "name":
-		return ib_diagnostics.port_name_pretty(port).lower()
-	    else:
-		return None if not key in port else str(port[key]).lower()
-
 	plabel = None
 	port_plabel = { 'port1': None, 'port2': None }
 
 	if port2:
-	    #find out if the cable has overrides
-	    SQL.execute('''
-		SELECT 
-		    cl.new_plabel as cable_plabel,
-		    p1.new_plabel as p1_new_plabel,
-		    p2.new_plabel as p2_new_plabel
-		FROM 
-		    cable_labels as cl
-		INNER JOIN
-		    cable_port_labels as p1
-		ON
-		    cl.clid = p1.clid and
-		    lower(p1.flabel) = ? and 
-		    p1.port = ?
-		INNER JOIN
-		    cable_port_labels as p2
-		ON
-		    cl.clid = p2.clid and
-		    p1.cplid != p2.cplid and
-		    lower(p2.flabel) = ? and 
-		    p2.port = ?             
-		LIMIT 1
-	    ''', (
-		gpv(port1,'name'),
-		gpv(port1,'port'),
-		gpv(port2,'name'),
-		gpv(port2,'port')
-	    ))
-	    for row in SQL.fetchall():
-		plabel = row['cable_plabel']
-		port_plabel['port1'] = row['p1_new_plabel']
-		port_plabel['port2'] = row['p2_new_plabel']
+	    overrides = update_cable_override(port1, port2, None)
+	    if overrides:
+		plabel = overrides['plabel']
+		port_plabel['port1'] = overrides['port1_plabel']
+		port_plabel['port2'] = overrides['port2_plabel']
 		vlog(4, 'detected cable label override to %s' % (plabel))
+	    else:
+		vlog(4, 'no cable label override for %s' % (plabel))
 
 	SQL.execute('''
 	    INSERT INTO 
@@ -1702,6 +1803,9 @@ def run_parse(dump_dir):
 	    #create the cable
 	    cid = insert_cable(port1, port2, timestamp)
 	    new_cables.append({ 'cid': cid, 'port1': port1, 'port2': port2})
+	else:
+	    #check for any new overrides
+	    update_cable_override(port1, port2, cid)
 
 	#record cid in each port to avoid relookup
 	port1['cable_id'] = cid
@@ -1938,7 +2042,7 @@ def dump_help():
 	    'port2 firmware label'
 	    'port2 port number'
 	    'port2 new physical label'
-	any cable discovered will have physical label overrode
+	overrides will be applied when parse is called
 
     Cable Labels Types:
 	cable id: c#
