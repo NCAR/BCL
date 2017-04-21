@@ -822,7 +822,7 @@ def send_casg(cid, comment):
 	else:
  	    label = 'Cable Label: %s' % (flabel)
 
-	EV.assign_group(tid, 'ssg', None, {
+	EV.assign_group(tid, 'casg', None, {
 	    'COMMENTS':	'''
 		CASG,
 
