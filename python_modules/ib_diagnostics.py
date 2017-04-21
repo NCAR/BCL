@@ -545,12 +545,25 @@ def parse_ibdiagnet ( ports, issues, contents ):
 		   lnmatch = ibdiag_line_regex_link.match(lmatch.group('msg'))
 		   lftmatch = ibdiag_line_regex_lft.match(lmatch.group('msg'))
 		   if cmatch:
-		       if 'port_rcv_switch_relay_errors' == cmatch.group('counter'):
-			   vlog(4, 'ignoring counter port_rcv_switch_relay_errors with %s' % (cmatch.group('value')))
+		       port = parse_resolve_port(ports, cmatch.group('port'))
+
+		       if (
+			       str(cmatch.group('counter')) in [ 
+				   #ignored counters in general
+				   'port_rcv_switch_relay_errors', 
+				   'port_xmit_discard' 
+			       ] or
+			       ( #ignore reconnects for HCAs since they happen often
+				   cmatch.group('counter') == 'link_down_counter' and
+				   port and port['type'] == "CA"
+			       )
+
+			  ):
+			       vlog(4, 'ignoring counter %s with %s' % (cmatch.group('counter'), cmatch.group('value')))
 		       else:
 			   issues.append({ 
 			       'type': 'counters',
-			       'ports': [parse_resolve_port(ports, cmatch.group('port'))],
+			       'ports': [port],
 			       'issue': 'Counter %s increased to %s' % (cmatch.group('counter'), cmatch.group('value')),
 			       'raw': cmatch.string,
 			       'source': 'ibdiagnet2.log'
