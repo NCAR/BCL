@@ -1440,7 +1440,6 @@ def run_parse(dump_dir):
 	else:
 	    return None if not key in port else str(port[key])
 
-
     def update_cable_override(port1, port2, update_cid = None):
 	""" Searches overrides table for new physical labels and applies them 
 	    skips update if update_cid is not set
@@ -1511,12 +1510,12 @@ def run_parse(dump_dir):
 
 	SQL.execute('''
 	    SELECT 
-		cables.cid,
-		cables.plabel,
-		cp1.cpid as cp1_cpid,
-		cp2.cpid as cp2_cpid,
-		cp2.plabel as cp2_plabel,
-		cp1.plabel as cp1_plabel
+		cables.cid  as cid,
+		cables.plabel as plabel,
+		cp1.cpid    as cp1_cpid,
+		cp1.plabel  as cp1_plabel,
+		cp2.cpid    as cp2_cpid,
+		cp2.plabel  as cp2_plabel
 	    FROM 
 		cables
 
