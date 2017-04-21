@@ -1523,17 +1523,25 @@ def run_parse(dump_dir):
 		cable_ports as cp1
 	    ON
 		cables.cid = ? and
-		cables.cid = cp1.cid
+		cables.cid = cp1.cid and
+		cp1.guid = ? and
+		cp1.port = ?
 
 	    LEFT OUTER JOIN
 		cable_ports as cp2
 	    ON
 		cables.cid = cp2.cid and
-		cp1.cpid != cp2.cpid
+		cp1.cpid != cp2.cpid and
+ 		cp2.guid = ? and
+		cp2.port = ?
 		 
 	    LIMIT 1
 	''',(
 	    update_cid,
+	    convert_guid_intstr(port1['guid']),
+	    int(port1['port']),
+ 	    convert_guid_intstr(port2['guid']),
+	    int(port2['port']),
 	))
 
 	for row in SQL.fetchall():
