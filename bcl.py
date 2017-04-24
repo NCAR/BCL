@@ -1152,8 +1152,9 @@ def list_state(what, list_filter):
 		))
 
 		for irow in SQL.fetchall():
-		    print '\tIssue %s: %s' % (
+		    print '\tIssue %s %s: %s' % (
 			    'i%s' % irow['iid'],
+			    irow['source'],
 			    irow['issue']
 			) 
 
