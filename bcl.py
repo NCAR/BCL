@@ -429,6 +429,7 @@ def resolve_cable(needle):
 
     Honored formats:
 	Cable: c#
+	ticket: t#
 	Guid/Port: S{guid}/P{port}
 	Port Firmware Label
 	Port Physical Label
@@ -441,6 +442,8 @@ def resolve_cable(needle):
 	    ^\s*
 	    (?P<needle>
 		(?:[sS]|)(?P<guid>(?:0x|)[a-fA-F0-9]*)/P(?P<guidport>[0-9]+)
+		|
+		t(?P<ticket>[0-9]+)
 		|
 		c(?P<cid>[0-9]+)
 		|
@@ -459,7 +462,7 @@ def resolve_cable(needle):
     if not match:
 	return None
 
-    if match.group('cid') or match.group('label') or match.group('label'):
+    if match.group('cid') or match.group('label') or match.group('label') or match.group('ticket'):
 	SQL.execute('''
 	    SELECT 
 		cables.cid as cid,
@@ -474,14 +477,16 @@ def resolve_cable(needle):
 	    WHERE
 		cables.cid = ? or
 		cables.plabel = ? or
-		cables.flabel = ? 
+		cables.flabel = ? or
+		cables.ticket = ?
 
 	    ORDER BY cables.ctime DESC
 	    LIMIT 1
 	''',(    
 	    match.group('cid'),
 	    match.group('label'),
-	    match.group('label')
+	    match.group('label'),
+	    match.group('ticket')
 	))
 
 	for row in SQL.fetchall():
@@ -1111,7 +1116,7 @@ def list_state(what, list_filter):
 		print f.format(
 			'c%s' % (row['cid']),
 			row['state'],
-			row['ticket'],
+			't%s' % (row['ticket']) if row['ticket'] else None,
 			row['length'] if row['length'] else None,
 			row['SN'] if row['SN'] else None,
 			row['PN'] if row['PN'] else None,
@@ -1216,7 +1221,7 @@ def list_state(what, list_filter):
 			'c%s' % (row['scid']) if row['scid'] else None,
 			row['state'],
 			row['suspected'],
-			row['ticket'],
+			't%s' % (row['ticket']) if row['ticket'] else None,
 			row['ctime'],
 			row['mtime'],
 			row['length'] if row['length'] else None,
@@ -2053,6 +2058,7 @@ def dump_help():
 
     Cable Labels Types:
 	cable id: c#
+	ticket id: t#
 	guid/port pairs: S{{guid}}/P{{port}}
 	label: cable port label
 	states: @watch, @suspect, @disabled, @sibling, @removed
