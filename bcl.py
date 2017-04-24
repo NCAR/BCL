@@ -1858,6 +1858,7 @@ def run_parse(dump_dir):
 
     for cid in missing_cables:
 	#Verify missing cables actually matter: ignore single port cables (aka unconnected)
+	#ignore missing cables connected to HCAs, nodes go up and down all the time
 	SQL.execute('''
 	    SELECT 
 		cables.cid,
@@ -1870,13 +1871,15 @@ def run_parse(dump_dir):
 		cable_ports as cp1
 	    ON
 		cables.cid = ? and
-		cables.cid = cp1.cid
+		cables.cid = cp1.cid and
+		cp1.hca != 0
 
 	    LEFT OUTER JOIN
 		cable_ports as cp2
 	    ON
 		cables.cid = cp2.cid and
-		cp1.cpid != cp2.cpid
+		cp1.cpid != cp2.cpid and
+		cp2.hca != 0
 		 
 	    LIMIT 1 
 	    ''', (
