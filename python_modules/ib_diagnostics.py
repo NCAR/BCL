@@ -644,7 +644,7 @@ def sanity_check_string(issues, source, what, string, check_type = "string"):
 	    'type': 'unknown',
 	    'ports': [],
 	    'issue': '%s is non-ascii string' % (what),
-	    'raw': 'hexdump: %s' % (to_hex(string)),
+	    'raw': '%s: hexdump: %s' % (what, to_hex(string)),
 	    'source': source
 	})  
 	return False
