@@ -82,6 +82,18 @@ def get_ib_speed():
 	return {'speed': 'EDR', 'link': 25, 'width': '4x'};
     return None
 
+def logical_to_physical_dict(v):
+    """ convert dict of entity to physical """
+    a = logical_to_physical(v['rack'], v['iru'])
+    v['rack'] = a['rack']
+    v['iru'] = a['iru']
+
+def physical_to_logical_dict(v):
+    """ convert dict of entity to physical """
+    a = physical_to_logical(v['rack'], v['iru'])
+    v['rack'] = a['rack']
+    v['iru'] = a['iru']
+
 def logical_to_physical(rack, iru):
     """ Convert SGI logical labels to physical labels """
     if iru > 4:
