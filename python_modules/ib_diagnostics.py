@@ -561,7 +561,7 @@ def parse_ibdiagnet ( ports, issues, contents ):
 			       )  or
 			       ( #ignore small numbers of symbol errors
 				   cmatch.group('counter') == 'symbol_error_counter' and
-				   cmatch.group('value') < 15
+				   int(cmatch.group('value')) < 15
 			       )  
 
 			  ):
