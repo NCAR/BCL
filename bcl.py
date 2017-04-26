@@ -1941,7 +1941,7 @@ def run_parse(dump_dir):
 	    'ssgev',
 	    'ssg',
 	    None,
-	    '%s: Infinband Issues' % (cluster_info.get_cluster_name_formal()), 
+	    '%s: Infiniband Issues' % (cluster_info.get_cluster_name_formal()), 
 	    '''
 	    %s issues have been detected against the Infinband fabric for %s.
 	    ''' % (
