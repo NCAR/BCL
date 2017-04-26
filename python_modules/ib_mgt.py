@@ -34,6 +34,12 @@ def exec_opensm_to_string ( cmd, primary_only = False ):
 
 	output[n].append(str(buffer))
 
+    vlog(5, 'exec_opensm_to_string cmd=%s primary_only=%s ret=%s' % (
+	[cmd],
+	primary_only,
+	task.max_retcode()
+    ))
+
     return output
 
 def exec_opensm_to_file ( cmd, output_file ):
