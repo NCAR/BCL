@@ -992,7 +992,8 @@ def release_cable(cid, comment, full = False):
 
     for row in SQL.fetchall():
 	if row['state'] == 'watch':
-	    vlog(3, 'ignoring release cable c%s from state %s' % (cid, row['state']))
+	    enable_cable(cid, comment) 
+	    vlog(3, 'enabling and ignoring release cable c%s from state %s' % (cid, row['state']))
 	    return
 
 	vlog(3, 'release cable c%s from state %s' % (cid, row['state']))
