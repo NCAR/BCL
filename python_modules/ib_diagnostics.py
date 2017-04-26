@@ -389,14 +389,16 @@ def parse_sgi_ibcv2 ( ports, issues, contents ):
 	vlog(5, 'parse_sgi_ibcv2::parse(%s)' % (label))
 
 	#r1i0s0c0.16
+	#r9i2s0c1.20
+	#r10i2s0c1.20
  	port_regex = re.compile(
 	    r"""
-	    r(?P<rack>[0-9]*)  #E-cell Rack - not E-Cell number
-	    i(?P<iru>[0-9]*)
-	    s(?P<switch>[0-9]*)
-	    c(?P<swchip>[0-9]*)
+	    r(?P<rack>[0-9]+)  #E-cell Rack - not E-Cell number
+	    i(?P<iru>[0-9]+)
+	    s(?P<switch>[0-9]+)
+	    c(?P<swchip>[0-9]+)
 	    \.
-	    (?P<port>[0-9]*)
+	    (?P<port>[0-9]+)
 	    """,
 	    re.VERBOSE
 	    )
@@ -432,11 +434,11 @@ def parse_sgi_ibcv2 ( ports, issues, contents ):
     for match in re.finditer(r"""
 	\s*
 	(
-	    ERROR:\s*(?P<error>.*)
+	    ERROR:\s*(?P<error>.+)
 	    |
-	    NOT\ FOUND:\s*(?P<missing1>\S*)\s*(?P<missing2>\S*)
+	    NOT\ FOUND:\s*(?P<missing1>\S+)\s*(?P<missing2>\S+|)
 	    |
-	    FOUND:\s*(?P<found1>\S*)\s*<-*>\s*(?P<found2>\S*)
+	    FOUND:\s*(?P<found1>\S+)\s*<-*>\s*(?P<found2>\S+)
 	)
 	\s*
 	""", contents, re.VERBOSE):
