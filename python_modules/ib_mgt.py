@@ -40,6 +40,9 @@ def exec_opensm_to_string ( cmd, primary_only = False ):
 	task.max_retcode()
     ))
 
+    if task.max_retcode() > 0:
+	vlog(1, 'Opensm command may have failed with ret code %s: %s' % (task.max_retcode(), cmd))
+
     return output
 
 def exec_opensm_to_file ( cmd, output_file ):
