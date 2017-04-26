@@ -558,7 +558,11 @@ def parse_ibdiagnet ( ports, issues, contents ):
 			       ( #ignore reconnects for HCAs since they happen often
 				   cmatch.group('counter') == 'link_down_counter' and
 				   port and port['type'] == "CA"
-			       )
+			       )  or
+			       ( #ignore small numbers of symbol errors
+				   cmatch.group('counter') == 'symbol_error_counter' and
+				   cmatch.group('value') < 15
+			       )  
 
 			  ):
 			       vlog(4, 'ignoring counter %s with %s' % (cmatch.group('counter'), cmatch.group('value')))
