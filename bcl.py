@@ -1800,7 +1800,8 @@ def run_parse(dump_dir):
     p_ibcv2 = '%s/%s' % (dump_dir,'sgi-ibcv2.log') #optional
     if os.path.isfile(p_ibcv2):
 	with open(p_ibcv2, 'r') as fds:
-	    ib_diagnostics.parse_sgi_ibcv2(ports, issues, fds.read()) 
+	    #ib_diagnostics.parse_sgi_ibcv2(ports, issues, fds.read()) 
+	    pass
 
     ibsp = cluster_info.get_ib_speed()
     ib_diagnostics.find_underperforming_cables ( ports, issues, ibsp['speed'], ibsp['width'])
