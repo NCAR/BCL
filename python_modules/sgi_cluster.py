@@ -112,10 +112,13 @@ def physical_to_logical(rack, iru):
     if rack & 1:
 	#odd rack
 	rack = (rack + 1) / 2
-	iru += 4
     else: #even rack
 	rack /= 2
 
+    if iru & 1:
+	#odd iru
+	iru += 4
+     
     return {
 	'rack': rack,
 	'iru': iru
