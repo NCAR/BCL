@@ -2002,7 +2002,7 @@ def dump_help():
 	add cable to bad node list 
 	open EV against node in SSG queue or Assign to SSG queue
 
-    sibling: {0} sibiling {{(bad cable id) c#}} {{cables}}+ 
+    sibling: {0} sibiling 'comment' {{(bad cable id) c#}} {{cables}}+ 
 	mark cable as sibling to bad cable if sibling is in watch state
 	disables sibling cable in fabric
 
