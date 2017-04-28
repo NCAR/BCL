@@ -1945,9 +1945,12 @@ def run_parse(dump_dir):
 	    '%s: Infiniband Issues' % (cluster_info.get_cluster_name_formal()), 
 	    '''
 	    %s issues have been detected against the Infinband fabric for %s.
+
+	    Raw Data: %s
 	    ''' % (
 		len(ticket_issues),
-		cluster_info.get_cluster_name_formal()
+		cluster_info.get_cluster_name_formal(),
+		dump_dir
 	    ), { 
 		'HELP_LOCATION': EV.get_field_value_to_field_key('HELP_LOCATION', 'NWSC'),
 		'HELP_HOSTNAME': EV.get_field_value_to_field_key(
