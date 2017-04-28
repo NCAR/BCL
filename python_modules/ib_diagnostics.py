@@ -599,6 +599,7 @@ def parse_ibdiagnet ( ports, issues, contents ):
 				'Ports counters Difference Check (during run) finished with errors',
 				'Links Speed Check finished with errors',
 				'Links Check finished with errors',
+				'Links Width Check finished with errors',
 				'Fabric Discover finished with errors',
 				'Partition Keys finished with errors'
 			    ]:
