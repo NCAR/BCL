@@ -1840,23 +1840,25 @@ def run_parse(dump_dir):
 	if gv(port, 'SN') and gv(port, 'PN'):
 	    check_replaced_cable(cid, gv(port, 'SN'), gv(port, 'PN'))
 
-
     #Find any cables that are known but not parsed this time around (aka went dark)
     #ignore any cables in a disabled state
     missing_cables = []
+    #find all cables marked as sibling
+    sibling_cables = []
     SQL.execute('''
 	    SELECT 
-		cid
+		cid,
+		state
 	    FROM 
 		cables
 	    WHERE
-		state != 'removed' or
-		state != 'disabled' or
-		state != 'sibling' or
-		sibling IS NOT NULL
+		state != 'removed' and
+		state != 'disabled'
 	''')
     for row in SQL.fetchall():
-	if not row['cid'] in known_cables:
+	if row['state'] == 'sibling':
+	    sibling_cables.append(int(row['cid']))
+	elif not row['cid'] in known_cables:
 	    missing_cables.append(int(row['cid']))
 
     for cid in missing_cables:
@@ -1920,19 +1922,21 @@ def run_parse(dump_dir):
 	    timestamp
 	]))
 
-	if cid:
-	    #hand over cleaned up info for issues
-	    add_issue(
-		issue['type'],
-		cid,
-		issue['issue'],
-		issue['raw'],
-		issue['source'],
-		timestamp
-	    )
-	else:
-	    #issues without a known cable will be aggregated into a single ticket
-	    ticket_issues.append(issue['raw'])
+	#ignore any issue with siblings as they can be caused by original cable or maybe not
+	if not cid in sibling_cables:
+	    if cid:
+		#hand over cleaned up info for issues
+		add_issue(
+		    issue['type'],
+		    cid,
+		    issue['issue'],
+		    issue['raw'],
+		    issue['source'],
+		    timestamp
+		)
+	    else:
+		#issues without a known cable will be aggregated into a single ticket
+		ticket_issues.append(issue['raw'])
 
     SQL.execute('VACUUM;')
 
