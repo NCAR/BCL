@@ -1844,11 +1844,12 @@ def run_parse(dump_dir):
     #ignore any cables in a disabled state
     missing_cables = []
     #find all cables marked as sibling
-    sibling_cables = []
+    sibling_cables = {} #sibling cable -> bad cable
     SQL.execute('''
 	    SELECT 
 		cid,
-		state
+		state,
+		sibling
 	    FROM 
 		cables
 	    WHERE
@@ -1857,7 +1858,7 @@ def run_parse(dump_dir):
 	''')
     for row in SQL.fetchall():
 	if row['state'] == 'sibling':
-	    sibling_cables.append(int(row['cid']))
+	    sibling_cables[int(row['cid'])] = int(row['sibling'])
 	elif not row['cid'] in known_cables:
 	    missing_cables.append(int(row['cid']))
 
@@ -1912,7 +1913,12 @@ def run_parse(dump_dir):
 	for iport in issue['ports']:
 	    if iport and 'cable_id' in iport:
 		cid = iport['cable_id']
-
+ 
+	#put blame from sibling on the marked bad cable
+	if cid in sibling_cables:
+	    vlog(3, 'blaming c%s instead of %s' % (cid, sibling_cables[cid]))
+	    cid = sibling_cables[cid]
+             
 	vlog(5, 'issue detected: %s' % ([
 	    issue['type'],
 	    'c%s' % cid if cid else None,
@@ -1922,21 +1928,19 @@ def run_parse(dump_dir):
 	    timestamp
 	]))
 
-	#ignore any issue with siblings as they can be caused by original cable or maybe not
-	if not cid in sibling_cables:
-	    if cid:
-		#hand over cleaned up info for issues
-		add_issue(
-		    issue['type'],
-		    cid,
-		    issue['issue'],
-		    issue['raw'],
-		    issue['source'],
-		    timestamp
-		)
-	    else:
-		#issues without a known cable will be aggregated into a single ticket
-		ticket_issues.append(issue['raw'])
+	if cid:
+	    #hand over cleaned up info for issues
+	    add_issue(
+		issue['type'],
+		cid,
+		issue['issue'],
+		issue['raw'],
+		issue['source'],
+		timestamp
+	    )
+	else:
+	    #issues without a known cable will be aggregated into a single ticket
+	    ticket_issues.append(issue['raw'])
 
     SQL.execute('VACUUM;')
 
