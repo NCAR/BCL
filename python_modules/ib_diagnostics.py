@@ -601,6 +601,7 @@ def parse_ibdiagnet ( ports, issues, contents ):
 				'Links Check finished with errors',
 				'Links Width Check finished with errors',
 				'Fabric Discover finished with errors',
+				'Alias GUIDs finished with errors',
 				'Partition Keys finished with errors'
 			    ]:
 
