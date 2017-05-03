@@ -742,6 +742,30 @@ def enable_cable_ports(cid):
     for row in SQL.fetchall(): 
 	ib_mgt.enable_port(int(row['guid']), int(row['port']))
 
+def query_cable_ports(cid):
+    """ Queries cable ports in fabric """
+
+    SQL.execute('''
+	SELECT 
+	    guid,
+	    port,
+	    flabel
+	FROM 
+	    cable_ports 
+	WHERE
+	    cid = ?
+    ''',(
+	cid,
+    ))
+
+    for row in SQL.fetchall(): 
+	ret = ib_mgt.query_port(int(row['guid']), int(row['port']))
+	for sm,txt in ret.iteritems():
+	    for field in txt:
+		for line in field.split('\n'):
+		    print '%s: %s' % (row['flabel'], line)
+ 
+
 def send_casg(cid, comment):
     """ disable cable and send ticket to CASG """
     disable_cable(cid, comment)
@@ -2046,6 +2070,9 @@ def dump_help():
 	disables cable in fabric
 	send extraview ticket to CASG
 
+    query: {0} query {{cables}}+ 
+	Query cables status in fabric
+ 
     release: {0} release {{comment}} {{cables}}+ 
 	enable cable in fabric
 	set cable state to watch
@@ -2166,6 +2193,9 @@ else:
 	elif CMD == 'release':
 	    for cid in resolve_cables(argv[3:]):
 		release_cable(cid, argv[2])
+ 	elif CMD == 'query':
+	    for cid in resolve_cables(argv[2:]):
+		query_cable_ports(cid) 
 	elif CMD == 'rejuvenate':
 	    for cid in resolve_cables(argv[3:]):
 		release_cable(cid, argv[2], True)

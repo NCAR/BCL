@@ -80,4 +80,16 @@ def enable_port( guid, port ):
     vlog(2, 'Enabling %s/P%s in fabric' % (hex(guid), port))
     return exec_opensm_to_string('ibportstate -G %s %s enable' % (guid, port))
 
+def query_port( guid, port ):
+    """ Query port in fabric 
+    GUID must be integer and not hex string
+    """
+
+    if not isinstance(guid, (int, long)) or not isinstance(port, (int)):
+	vlog(1, 'guid/port must be ints. given %s/P%s %s/%s' % (guid, port, type(guid), type(port)))
+	return None
+
+    vlog(2, 'Querying %s/P%s in fabric' % (hex(guid), port))
+    return exec_opensm_to_string('ibportstate -G %s %s' % (guid, port))
+
  
