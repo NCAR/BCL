@@ -89,7 +89,7 @@ def query_port( guid, port ):
 	vlog(1, 'guid/port must be ints. given %s/P%s %s/%s' % (guid, port, type(guid), type(port)))
 	return None
 
-    vlog(2, 'Querying %s/P%s in fabric' % (hex(guid), port))
+    vlog(4, 'Querying %s/P%s in fabric' % (hex(guid), port))
     return exec_opensm_to_string('ibportstate -G %s %s' % (guid, port))
 
  
