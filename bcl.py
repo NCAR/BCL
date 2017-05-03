@@ -674,7 +674,10 @@ def enable_cable_ports(cid):
     ))
 
     for row in SQL.fetchall(): 
-	ib_mgt.enable_port(int(row['guid']), int(row['port'])) 
+	if row['hca']:
+	    vlog(3, 'skip enabling hca for p%s' % ( row['cpid'] ))
+	else:
+	    ib_mgt.enable_port(int(row['guid']), int(row['port'])) 
 
 def remove_cable(cid, comment):
     """ marks cable as removed """
