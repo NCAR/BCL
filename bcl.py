@@ -1612,7 +1612,8 @@ def run_parse(dump_dir):
 	#Attempt to find the newest cable by guid/port/SN
 	SQL.execute('''
 	    SELECT 
-		cables.cid as cid
+		cables.cid as cid,
+		max(cp1.hca, cp2.hca) as hca
 	    from 
 		cables
 
@@ -1646,7 +1647,7 @@ def run_parse(dump_dir):
 	rows = SQL.fetchall()
 	if len(rows) > 0:
 	    #exact cable found
-	    return rows[0]['cid']
+	    return {'cid': rows[0]['cid'], 'hca': rows[0]['hca']}
 	else:
 	    return None
 
@@ -1810,16 +1811,22 @@ def run_parse(dump_dir):
     #slow but keeps sane list of all cables forever for issue tracking
     known_cables=[] #track every that is found
     new_cables=[] #track every that is created
+    hca_cables=[] #track every that has an hca
     for port in ports:
 	port1 = port
 	port2 = port['connection']
-        cid = find_cable(port1, port2)
+	cid = None
+	hca_found = None
+	retc = find_cable(port1, port2)
 
-	if not cid:
+	if not retc:
 	    #create the cable
 	    cid = insert_cable(port1, port2, timestamp)
 	    new_cables.append({ 'cid': cid, 'port1': port1, 'port2': port2})
+	    hca_found = port1['type'] == "CA" or (port2 and port2['type'] == "CA")
 	else:
+	    cid = retc['cid']
+	    hca_found = retc['hca']
 	    #check for any new overrides
 	    update_cable_override(port1, port2, cid)
 
@@ -1829,6 +1836,8 @@ def run_parse(dump_dir):
 	    port2['cable_id'] = cid
 
 	known_cables.append(cid)
+	if hca_found:
+	    hca_cables.append(cid)
 
     #check new cables (outside of begin/commit)
     for cable in new_cables:
@@ -1895,7 +1904,7 @@ def run_parse(dump_dir):
 	    if row['cp1_cpid'] and row['cp2_cpid']:
 		#cable went dark
 		add_issue(
-		    'missing cable',
+		    'missing',
 		    cid,
 		    'Cable went missing',
 		    None,
@@ -1918,6 +1927,10 @@ def run_parse(dump_dir):
 	if cid in sibling_cables:
 	    vlog(3, 'blaming c%s instead of %s' % (cid, sibling_cables[cid]))
 	    cid = sibling_cables[cid]
+
+ 	if issue['type'] == 'missing' and cid in hca_cables:
+	    vlog(3, 'ignoring missing cable c%s with an hca' % (cid))
+	    continue
              
 	vlog(5, 'issue detected: %s' % ([
 	    issue['type'],
