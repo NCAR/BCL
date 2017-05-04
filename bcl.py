@@ -867,6 +867,8 @@ def send_casg(cid, comment):
 		Serial: %s
 		Product Number: %s
 
+		SSG Request:
+
 		%s
 
 		The following cables have also been shutdown for this repair work:
