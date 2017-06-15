@@ -96,11 +96,11 @@ def physical_to_logical_dict(v):
 
 def logical_to_physical(rack, iru):
     """ Convert SGI logical labels to physical labels """
-    if iru > 4:
+    if iru > 3:
 	rack *= 2
 	iru -= 4
     else: #IRU in rack
-	rack = rack * 2 + 1
+	rack = rack * 2 - 1
     
     return {
 	'rack': rack,
@@ -114,11 +114,8 @@ def physical_to_logical(rack, iru):
 	rack = (rack + 1) / 2
     else: #even rack
 	rack /= 2
-
-    if iru & 1:
-	#odd iru
 	iru += 4
-     
+
     return {
 	'rack': rack,
 	'iru': iru
