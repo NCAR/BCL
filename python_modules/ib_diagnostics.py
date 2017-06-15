@@ -560,7 +560,7 @@ def parse_ibdiagnet ( ports, issues, contents ):
 				   port and port['type'] == "CA"
 			       )  or
 			       ( #ignore small numbers of symbol errors
-				   str(cmatch.group('counter')) in [ 'port_rcv_errors', 'symbol_error_counter', 'port_rcv_remote_physical_errors' ] and
+				   str(cmatch.group('counter')) in [ 'port_rcv_errors', 'symbol_error_counter', 'port_rcv_remote_physical_errors', 'vl15_dropped' ] and
 				   int(cmatch.group('value')) < 15
 			       )  
 
