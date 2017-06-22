@@ -2050,14 +2050,18 @@ def dump_help():
  	{0} list overrides
 	    dump list of cable label overrides
 
-    add: {0} add {{issue description}} {{cables}}+ 
-	Note: Use GUID/Port syntax or cable id (c#) to avoid applying to wrong cable
-	add cable to bad node list 
-	open EV against node in SSG queue or Assign to SSG queue
+    add: 
+	{0} add {{issue description}} {{cables}}+ 
+	{0} suspect {{issue description}} {{cables}}+ 
+	    Note: Use GUID/Port syntax or cable id (c#) to avoid applying to wrong cable
+	    add cable to bad node list 
+	    open EV against node in SSG queue or Assign to SSG queue
 
-    sibling: {0} sibiling 'comment' {{(bad cable id) c#}} {{cables}}+ 
-	mark cable as sibling to bad cable if sibling is in watch state
-	disables sibling cable in fabric
+    sibling:
+	{0} sibiling 'comment' {{(bad cable id) c#}} {{cables}}+ 
+	{0} donor 'comment' {{(bad cable id) c#}} {{cables}}+ 
+	    mark cable as sibling to bad cable if sibling is in watch state
+	    disables sibling cable in fabric
 
     disable: {0} disable 'comment' {{cables}}+ 
 	disables cable in fabric
@@ -2189,7 +2193,7 @@ else:
 	elif CMD == 'casg':
 	    for cid in resolve_cables(argv[3:]):
 		send_casg(cid, argv[2]) 
-	elif CMD == 'add':
+	elif CMD == 'add' or CMD == 'suspect':
 	    for cid in resolve_cables(argv[3:]):
 		add_issue('Manual Entry', cid, argv[2], None, 'admin', int(time.time()))
 	elif CMD == 'release':
@@ -2210,7 +2214,7 @@ else:
 	elif CMD == 'comment':
 	    for cid in resolve_cables(argv[3:]):
 		comment_cable(cid, argv[2]) 
-	elif CMD == 'sibling':
+	elif CMD == 'sibling' or CMD == 'donor':
 	    source_cid = resolve_cable(argv[3]) 
 	    if source_cid:
 		for cid in resolve_cables(argv[4:]):
