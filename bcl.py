@@ -600,6 +600,40 @@ def honor_issue(comment, iid):
 
     vlog(2, 'issue i%s will be honored: %s' % (iid, comment))
 
+def set_plabel_cable(cid, plabel):
+    """ set physical label of cable  """
+
+    if plabel == '':
+	plabel = None
+
+    SQL.execute('''
+	SELECT 
+	    cid,
+	    plabel
+	FROM 
+	    cables
+	WHERE
+	    cables.cid = ?
+	LIMIT 1
+    ''',(
+	cid,
+    ))
+
+    for row in SQL.fetchall():
+	vlog(2, 'set plabel from %s to %s for cable c%s' % (row['plabel'], plabel, cid))
+
+	SQL.execute('''
+	    UPDATE
+		cables 
+	    SET
+		plabel = ?
+	    WHERE
+		cid = ?
+	    ;''', (
+		plabel,
+		cid
+	));
+
 def comment_cable(cid, comment):
     """ Add comment to cable """
 
@@ -1816,11 +1850,15 @@ def dump_help():
 	sets the suspected count back to 0
 	disassociate Extraview ticket from Cable
 
+
     remove: {0} remove {{comment}} {{cables}}+ 
 	Note: only use this if the cable has been removed/replaced permanently
 	release cable
 	sets the cable as removed (disables all future detection against cable)
 
+    plabel: {0} plabel {{physical label}} {{cables}}+ 
+	Assign cable new physical label. (label can be an empty string to use logical label)
+ 
     comment: {0} comment {{comment}} {{cables}}+ 
 	add comment to bad cable's extraview ticket 
 
@@ -1922,6 +1960,9 @@ else:
 	elif CMD == 'honor':
 	    for iid in resolve_issues(argv[3:]):
 		honor_issue(argv[2], iid) 
+ 	elif CMD == 'plabel':
+	    for cid in resolve_cables(argv[3:]):
+		set_plabel_cable(cid, argv[2])
 	elif CMD == 'comment':
 	    for cid in resolve_cables(argv[3:]):
 		comment_cable(cid, argv[2]) 
