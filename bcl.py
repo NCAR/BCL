@@ -82,25 +82,6 @@ def initialize_db():
 	    FOREIGN KEY (cid) REFERENCES cables(cid)
 	);
 
-	--Special Table with Vendor firmware to physical label
-  	create table if not exists cable_labels (
-	    clid INTEGER PRIMARY KEY AUTOINCREMENT,
-	    --Physical label override
-	    new_plabel TEXT
-	);
-
-   	create table if not exists cable_port_labels (
-	    cplid INTEGER PRIMARY KEY AUTOINCREMENT,
-	    clid INTEGER,
-	    --Actual Firmware Label to look for
-	    flabel TEXT,
-	    --Actual Port Label
-	    port INTEGER,
-	    --New Physical label to apply
-	    new_plabel TEXT,
-	    FOREIGN KEY (clid) REFERENCES cable_labels(clid)
-	);
-
 	CREATE INDEX IF NOT EXISTS cable_ports_guid_index on cable_ports  (guid, port);
 
   	CREATE TABLE IF NOT EXISTS issues (
@@ -1353,55 +1334,7 @@ def list_state(what, list_filter):
 			row['issue'],
 			row['raw'].replace("\n", "\\n") if row['raw'] else None
 		    )
-    elif what == 'overrides':
-        f='{0:<10}{1:<50}{2:<25}{3:<7}{4:<25}{5:<25}{6:<7}{7:<25}'
- 	print f.format(
-		"id",
-		"Physical Label",
-		"port1 Firmware Label",
-		"port1#",
-		"port1 Physical Label",
- 		"port2 Firmware Label",
-		"port2#",
-		"port2 Physical Label"
-	    ) 
 
- 	SQL.execute('''
-	    SELECT 
-		cl.clid as clid,
-		cl.new_plabel as cable_plabel,
-		p1.flabel as p1_flabel,
-		p1.port as p1_port,
-		p1.new_plabel as p1_new_plabel,
-		p2.flabel as p2_flabel,
-		p2.port as p2_port,
-		p2.new_plabel as p2_new_plabel
-	    FROM 
-		cable_labels as cl
-	    INNER JOIN
-		cable_port_labels as p1
-	    ON
-		cl.clid = p1.clid
-	    INNER JOIN
-		cable_port_labels as p2
-	    ON
-		cl.clid = p2.clid and
-		p1.cplid  != p2.cplid 
-	    GROUP BY cl.clid
-	    ORDER BY cl.clid ASC
-	''')
-
-	for row in SQL.fetchall():
-	    print f.format(
-		    row['clid'],
-		    row['cable_plabel'],
-		    row['p1_flabel'],
-		    row['p1_port'],
-		    row['p1_new_plabel'],
- 		    row['p2_flabel'],
-		    row['p2_port'],
-		    row['p2_new_plabel']
-		)
     else:
 	vlog(1, 'unknown list %s request' % (list_filter))
 
@@ -1409,62 +1342,6 @@ def convert_guid_intstr(guid):
     """ normalise representation of guid to string of an integer 
 	since sqlite cant handle 64bit ints """
     return str(int(guid, 16))
-
-def load_overrides(path_csv):
-    """ Loads CSV with label overrides """
-    global EV, SQL
-
-    def gv(row, key):
-	""" get value or none """
-	return None if not key in row else str(row[key])
-
-    count = 0
-    with open(path_csv, 'rb') as csvfile:
-	for row in csv.DictReader(csvfile, delimiter=',', quotechar='\"'):
-	    SQL.execute('''
-		INSERT INTO 
-		cable_labels 
-		(
-		    new_plabel
-		) VALUES (
-		    ?
-		);''', (
-		    str(row['cable physical label']),
-	    ));
-
-	    clid = SQL.lastrowid
- 
-	    SQL.executemany('''
-		INSERT INTO 
-		cable_port_labels  
-		(
-		    clid,
-		    flabel,
-		    port,
-		    new_plabel
-		) VALUES (
-		    ?, ?, ?, ?
-		);''', [
-		    (
-			clid,
-			gv(row, 'port1 firmware label'),
-			gv(row, 'port1 port number'),
-			gv(row, 'port1 new physical label')
-		    ),
- 		    (
-			clid,
-			gv(row, 'port2 firmware label'),
-			gv(row, 'port2 port number'),
-			gv(row, 'port2 new physical label')
-		    )
-		]
-	    );
-
-	    count += 1
-                                
-    vlog(3, 'loaded %s cable overrides' % (count))
-
-
 
 def run_parse(dump_dir):
     """ Run parse mode against a dump directory """
@@ -1476,147 +1353,7 @@ def run_parse(dump_dir):
 	    return None
 	else:
 	    return None if not key in port else str(port[key])
-
-    def update_cable_override(port1, port2, update_cid = None):
-	""" Searches overrides table for new physical labels and applies them 
-	    skips update if update_cid is not set
-	"""
-	def gpv(port, key):
-	    """ get value or none. overrides name to pretty name """
-	    if not port:
-		return None
-	    if key == "name":
-		return ib_diagnostics.port_name_pretty(port).lower()
-	    else:
-		return None if not key in port else str(port[key]).lower()
-
-        def resolve_cable_override(port1, port2):
-	    """ Searches overrides table for new physical labels """
-	    if not port2:
-		return None
-     
-	    SQL.execute('''
-		SELECT 
-		    cl.new_plabel as cable_plabel,
-		    p1.new_plabel as p1_new_plabel,
-		    p2.new_plabel as p2_new_plabel
-		FROM 
-		    cable_labels as cl
-		INNER JOIN
-		    cable_port_labels as p1
-		ON
-		    cl.clid = p1.clid and
-		    lower(p1.flabel) = ? and 
-		    p1.port = ?
-		INNER JOIN
-		    cable_port_labels as p2
-		ON
-		    cl.clid = p2.clid and
-		    p1.cplid != p2.cplid and
-		    lower(p2.flabel) = ? and 
-		    p2.port = ?             
-		LIMIT 1
-	    ''', (
-		gv(port1,'name'),
-		gv(port1,'port'),
-		gv(port2,'name'),
-		gv(port2,'port')
-	    ))
-	    for row in SQL.fetchall():
-		return {
-		    'plabel': row['cable_plabel'],
-		    'port1_plabel':  row['p1_new_plabel'],
-		    'port2_plabel':  row['p2_new_plabel'],
-		}
-	 
-	    return None
-
-	if not port2:
-	    return None
-
-	overrides = resolve_cable_override({
-	    'name': gpv(port1,'name'),
-	    'port': gpv(port1,'port'),
-	},{
-	    'name': gpv(port2,'name'),
-	    'port': gpv(port2,'port'),
-	})
-
-	if not update_cid or not overrides:
-	    return overrides
-
-	SQL.execute('''
-	    SELECT 
-		cables.cid  as cid,
-		cables.plabel as plabel,
-		cp1.cpid    as cp1_cpid,
-		cp1.plabel  as cp1_plabel,
-		cp2.cpid    as cp2_cpid,
-		cp2.plabel  as cp2_plabel
-	    FROM 
-		cables
-
-	    INNER JOIN
-		cable_ports as cp1
-	    ON
-		cables.cid = ? and
-		cables.cid = cp1.cid and
-		cp1.guid = ? and
-		cp1.port = ?
-
-	    LEFT OUTER JOIN
-		cable_ports as cp2
-	    ON
-		cables.cid = cp2.cid and
-		cp1.cpid != cp2.cpid and
- 		cp2.guid = ? and
-		cp2.port = ?
-		 
-	    LIMIT 1
-	''',(
-	    update_cid,
-	    convert_guid_intstr(port1['guid']),
-	    int(port1['port']),
- 	    convert_guid_intstr(port2['guid']),
-	    int(port2['port']),
-	))
-
-	for row in SQL.fetchall():
-	    if (
-		row['plabel'] != overrides['plabel'] or
-		row['cp1_plabel'] != overrides['port1_plabel'] or
-		row['cp2_plabel'] != overrides['port2_plabel']
-	    ):
-		SQL.execute('''
-		    UPDATE
-			cables 
-		    SET
-			plabel = ?
-		    WHERE
-			cid = ?
-		    ;''', (
-			overrides['plabel'],
-			row['cid'],
-		));
-		vlog(4, 'updating plabel for c%s from %s to %s' % (row['cid'], row['plabel'], overrides['plabel']))
-
-		for cpid,plabel in { 
-		    row['cp1_cpid']: overrides['port1_plabel'], 
-		    row['cp2_cpid']: overrides['port2_plabel'] 
-		    }.iteritems():
-			SQL.execute('''
-			    UPDATE
-				cable_ports 
-			    SET
-				plabel = ?
-			    WHERE
-				cpid = ?
-			    ;''', (
-				plabel,
-				cpid,
-			));
-			vlog(4, 'updating plabel for p%s to %s' % (cpid, plabel))
-         
+    
     def find_cable(port1, port2):
 	""" Find (and update) cable in db 
 	port1: ib_diagnostics formatted port
@@ -1685,16 +1422,6 @@ def run_parse(dump_dir):
 
 	plabel = None
 	port_plabel = { 'port1': None, 'port2': None }
-
-	if port2:
-	    overrides = update_cable_override(port1, port2, None)
-	    if overrides:
-		plabel = overrides['plabel']
-		port_plabel['port1'] = overrides['port1_plabel']
-		port_plabel['port2'] = overrides['port2_plabel']
-		vlog(4, 'detected cable label override to %s' % (plabel))
-	    else:
-		vlog(4, 'no cable label override for %s' % (plabel))
 
 	SQL.execute('''
 	    INSERT INTO 
@@ -1856,8 +1583,6 @@ def run_parse(dump_dir):
 	else:
 	    cid = retc['cid']
 	    hca_found = retc['hca']
-	    #check for any new overrides
-	    update_cable_override(port1, port2, cid)
 
 	#record cid in each port to avoid relookup
 	port1['cable_id'] = cid
@@ -2047,9 +1772,6 @@ def dump_help():
   	{0} list ports {{cables}}+ 
 	    dump list of cable ports
 
- 	{0} list overrides
-	    dump list of cable label overrides
-
     add: 
 	{0} add {{issue description}} {{cables}}+ 
 	{0} suspect {{issue description}} {{cables}}+ 
@@ -2079,12 +1801,14 @@ def dump_help():
     query: {0} query {{cables}}+ 
 	Query cables status in fabric
  
-    release: {0} release {{comment}} {{cables}}+ 
-	enable cable in fabric
-	set cable state to watch
-	close Extraview ticket
-	release any sibling cables
-	release sibling status of cable (don't consider cable as sibling anymore)
+    release: 
+	{0} release {{comment}} {{cables}}+ 
+	{0} resolve {{comment}} {{cables}}+ 
+	    enable cable in fabric
+	    set cable state to watch
+	    close Extraview ticket
+	    release any sibling cables
+	    release sibling status of cable (don't consider cable as sibling anymore)
 
     rejuvenate: {0} rejuvenate {{comment}} {{cables}}+ 
 	Note: only use this if the cable has been replaced and it was not autodetected
@@ -2111,17 +1835,6 @@ def dump_help():
 	reads the output of ibnetdiscover, ibdiagnet2 and ibcv2
 	generates issues against errors found 
 	checks if any cable has been replaced (new SN) and will set that cable back to watch state
-
-    load_overrides: {0} load_overrides {{path to csv}}
-	reads csv with following column labels (first line of CSV):
-	    'cable physical label'
-	    'port1 firmware label'
-	    'port1 port number'
-	    'port1 new physical label'
-	    'port2 firmware label'
-	    'port2 port number'
-	    'port2 new physical label'
-	overrides will be applied when parse is called
 
     Cable Labels Types:
 	cable id: c#
@@ -2177,9 +1890,7 @@ else:
     elif len(argv) < 3:
 	dump_help()  
     else:
-	if CMD == 'load_overrides':
-	    load_overrides(argv[2])   
-	elif CMD == 'list':
+	if CMD == 'list':
 	    list_state(argv[2].lower(), argv[3:] if len(argv) > 3 else None)  
 	elif CMD == 'remove':
 	    for cid in resolve_cables(argv[3:]):
@@ -2196,7 +1907,7 @@ else:
 	elif CMD == 'add' or CMD == 'suspect':
 	    for cid in resolve_cables(argv[3:]):
 		add_issue('Manual Entry', cid, argv[2], None, 'admin', int(time.time()))
-	elif CMD == 'release':
+	elif CMD == 'release' or CMD == 'resolve':
 	    for cid in resolve_cables(argv[3:]):
 		release_cable(cid, argv[2])
  	elif CMD == 'query':
