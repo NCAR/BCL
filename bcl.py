@@ -5,6 +5,7 @@ import extraview_cli
 from nlog import vlog,die_now
 from ClusterShell.NodeSet import NodeSet
 from ClusterShell.Task import task_self
+import sqlite
 import os
 import syslog
 import pbs
@@ -15,7 +16,6 @@ import ib_mgt
 import pprint
 import time
 import datetime
-import sqlite3
 import re
 import csv
 
@@ -25,12 +25,9 @@ def initialize_db():
     """
     global BAD_CABLE_DB, SQL_CONNECTION, SQL
 
-    try:
-	SQL_CONNECTION = sqlite3.connect(BAD_CABLE_DB, isolation_level=None)
-	SQL_CONNECTION .row_factory = sqlite3.Row
-	SQL = SQL_CONNECTION.cursor()
-    except Exception as err:
-	vlog(1, 'Unable to Open DB: {0}'.format(err))
+    (SQL_CONNECTION, SQL) = sqlite.init(BAD_CABLE_DB)
+    if not SQL_CONNECTION or not SQL:
+	die_now('unable to open DB')
 
     SQL.executescript("""
 	PRAGMA foreign_keys = ON;
@@ -79,10 +76,12 @@ def initialize_db():
 	    name text,
 	    --if port is an HCA
 	    hca BOOLEAN,
+	    --if last seen state was physically enabled
+	    enabled BOOLEAN,
 	    FOREIGN KEY (cid) REFERENCES cables(cid)
 	);
 
-	CREATE INDEX IF NOT EXISTS cable_ports_guid_index on cable_ports  (guid, port);
+        CREATE INDEX IF NOT EXISTS cable_ports_guid_index on cable_ports  (guid, port);
 
   	CREATE TABLE IF NOT EXISTS issues (
 	    iid INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -104,14 +103,13 @@ def initialize_db():
 	);
 
     """)
-	    
+
+    sqlite.add_column(SQL, 'cable_ports' , 'enabled', 'BOOLEAN')
 
 def release_db():
     """ Releases Database """
     global BAD_CABLE_DB, SQL_CONNECTION, SQL
-
-    SQL.close()
-    SQL_CONNECTION.close()
+    sqlite.close(SQL_CONNECTION, SQL)
     vlog(5, 'released db')
 
 def add_sibling(cid, source_cid, comment):
@@ -1850,7 +1848,6 @@ def dump_help():
 	sets the suspected count back to 0
 	disassociate Extraview ticket from Cable
 
-
     remove: {0} remove {{comment}} {{cables}}+ 
 	Note: only use this if the cable has been removed/replaced permanently
 	release cable
@@ -1874,7 +1871,7 @@ def dump_help():
 	generates issues against errors found 
 	checks if any cable has been replaced (new SN) and will set that cable back to watch state
 
-    Cable Labels Types:
+    Cable Labels Types: (aka {{cables}}+)
 	cable id: c#
 	ticket id: t#
 	guid/port pairs: S{{guid}}/P{{port}}
@@ -1904,6 +1901,10 @@ BAD_CABLE_DB='/etc/ncar_bad_cable_list.sqlite'
 
 DISABLE_TICKETS=False
 EV = None
+
+
+if not ('NATE' in os.environ and os.environ['NATE'] == "YES"):
+    die_now('disabled for now')
 
 if 'BAD_CABLE_DB' in os.environ and os.environ['BAD_CABLE_DB']:
     BAD_CABLE_DB=os.environ['BAD_CABLE_DB']
