@@ -131,6 +131,7 @@ def print_label(v, pformat = None):
 	firmware: firmare label (r1i0s0 SW1 SwitchX -  Mellanox Technologies)
 	physical: physical label (001IRU2-0-1-14)
 	simple: simple label (r1i0s0 SW1/P1 or r1i3n17)
+	simple_name: simple label without port (r1i0s0 SW1 or r1i3n17)
     
     """
 
@@ -185,7 +186,7 @@ def print_label(v, pformat = None):
 		v['switch'],
 		v['switch_chip']
 	    ) 
-    elif pformat == 'simple':
+    elif pformat == 'simple' or pformat == 'simple_name':
 	if not v['node'] is None:
 	    return 'r%si%sn%s' % (
 		v['rack'],
@@ -193,7 +194,7 @@ def print_label(v, pformat = None):
 		v['node']
 	    ) 
 	if not v['switch'] is None:
-	    if not v['port'] is None:
+	    if not v['port'] is None and pformat == 'simple':
 		return 'r%si%ss%s SW%s/P%s' % (
 		    v['rack'],
 		    v['iru'],
