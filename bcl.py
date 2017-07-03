@@ -1,5 +1,5 @@
 #!/usr/bin/python
-from sys import path, argv
+from sys import path, argv, stderr
 path.append("/ssg/bin/python_modules/")
 import extraview_cli
 from nlog import vlog,die_now
@@ -1782,114 +1782,146 @@ def run_parse(dump_dir):
 	    EV.add_resolver_comment(tid, buf)
 
 
-def dump_help():
-    die_now("""NCAR Bad Cable List Multitool
+def dump_help(full = False):
+    if full == True:
+	print("""NCAR Bad Cable List Multitool (Full Help)
 
-    help: {0}
-	Print this help message
+	help: {0}
+	    Print this help message
 
-    list: 
- 	{0} list action[s] {{cables}}+ 
- 	{0} list actionable {{cables}}+ 
+	list: 
+	    {0} list
+	    {0} list action[s] {{cables}}+ 
+	    {0} list actionable {{cables}}+ 
+		dump list of actionable cable issues
+     
+	    {0} list issues {{cables}}+ 
+		dump list of issues
+
+	    {0} list cables {{cables}}+
+		dump list of cables
+
+	    {0} list ports {{cables}}+ 
+		dump list of cable ports
+
+	add: 
+	    {0} add {{issue description}} {{cables}}+ 
+	    {0} suspect {{issue description}} {{cables}}+ 
+		Note: Use GUID/Port syntax or cable id (c#) to avoid applying to wrong cable
+		add cable to bad node list 
+		open EV against node in SSG queue or Assign to SSG queue
+
+	sibling:
+	    {0} sibiling 'comment' {{(bad cable id) c#}} {{cables}}+ 
+	    {0} donor 'comment' {{(bad cable id) c#}} {{cables}}+ 
+		mark cable as sibling to bad cable if sibling is in watch state
+		disables sibling cable in fabric
+
+	disable: {0} disable 'comment' {{cables}}+ 
+	    disables cable in fabric
+	    add cable to bad cable list (if not one already) unless cable is sibling
+
+	enable: {0} enable 'comment' {{cables}}+ 
+	    enables cable in fabric
+	    puts a cable in disabled state back into suspect state (use release to set cable state to watch)
+     
+	casg: {0} casg {{comment}} {{cables}}+ 
+	    disables cable in fabric
+	    send extraview ticket to CASG
+
+	query: {0} query {{cables}}+ 
+	    Query cables status in fabric
+     
+	release: 
+	    {0} release {{comment}} {{cables}}+ 
+	    {0} resolve {{comment}} {{cables}}+ 
+		enable cable in fabric
+		set cable state to watch
+		close Extraview ticket
+		release any sibling cables
+		release sibling status of cable (don't consider cable as sibling anymore)
+
+	rejuvenate: {0} rejuvenate {{comment}} {{cables}}+ 
+	    Note: only use this if the cable has been replaced and it was not autodetected
+	    release cable
+	    sets the suspected count back to 0
+	    disassociate Extraview ticket from Cable
+
+	remove: {0} remove {{comment}} {{cables}}+ 
+	    Note: only use this if the cable has been removed/replaced permanently
+	    release cable
+	    sets the cable as removed (disables all future detection against cable)
+
+	plabel: {0} plabel {{physical label}} {{cables}}+ 
+	    Assign cable new physical label. (label can be an empty string to use logical label)
+     
+	comment: {0} comment {{comment}} {{cables}}+ 
+	    add comment to bad cable's extraview ticket 
+
+	ignore: {0} ignore {{comment}} {{(issue id) i#}}+
+	    Note: only use this in special cases for issues that can not be fixed
+	    ignore issue with assigned cable until honor requested
+
+	honor: {0} honor {{comment}} {{(issue id) i#}}+
+	    removes ignore status of issue
+     
+	parse: {0} parse {{path to ib dumps dir}}
+	    reads the output of ibnetdiscover, ibdiagnet2 and ibcv2
+	    generates issues against errors found 
+	    checks if any cable has been replaced (new SN) and will set that cable back to watch state
+
+	Cable Labels Types: (aka {{cables}}+)
+	    cable id: c#
+	    ticket id: t#
+	    guid/port pairs: S{{guid}}/P{{port}}
+	    label: cable port label
+	    states: @watch, @suspect, @disabled, @sibling, @removed
+
+	Optional Environment Variables:
+	    VERBOSE={{1-5 default=3}}
+		1: lowest
+		5: highest
+		
+	    DISABLE_TICKETS={{YES|NO default=NO}}
+		YES: disable creating and updating tickets (may cause extra errors)
+		NO: create tickets
+
+	    BAD_CABLE_DB={{path to sqlite db defailt=/etc/ncar_bad_cable_list.sqlite}}
+		Warning: will autocreate if non-existant or empty
+		Override which sqlite DB to use.
+     
+	""".format(argv[0]))
+    else: #short error mode
+	stderr.write("""NCAR Bad Cable List Multitool (Quick Help)
+
+	list: {0} list 
 	    dump list of actionable cable issues
- 
-	{0} list issues {{cables}}+ 
-	    dump list of issues
 
- 	{0} list cables {{cables}}+
-	    dump list of cables
+	disable: {0} disable 'comment' {{cables}}+ 
+	    disables cable in fabric
 
-  	{0} list ports {{cables}}+ 
-	    dump list of cable ports
+	enable: {0} enable 'comment' {{cables}}+ 
+	    enables cable in fabric
+     
+	casg: {0} casg {{comment}} {{cables}}+ 
+	    disables cable in fabric
+	    send extraview ticket to CASG
 
-    add: 
-	{0} add {{issue description}} {{cables}}+ 
-	{0} suspect {{issue description}} {{cables}}+ 
-	    Note: Use GUID/Port syntax or cable id (c#) to avoid applying to wrong cable
-	    add cable to bad node list 
-	    open EV against node in SSG queue or Assign to SSG queue
+	query: {0} query {{cables}}+ 
+	    Query cables status in fabric (ibportstate query output)
+     
+	release: 
+	    {0} release {{comment}} {{cables}}+ 
+	    {0} resolve {{comment}} {{cables}}+ 
+		enable cable in fabric
+		set cable state to watch
+		close Extraview ticket
 
-    sibling:
-	{0} sibiling 'comment' {{(bad cable id) c#}} {{cables}}+ 
-	{0} donor 'comment' {{(bad cable id) c#}} {{cables}}+ 
-	    mark cable as sibling to bad cable if sibling is in watch state
-	    disables sibling cable in fabric
+	comment: {0} comment {{comment}} {{cables}}+ 
+	    add comment to bad cable's extraview ticket 
+	""".format(argv[0]))
+     
 
-    disable: {0} disable 'comment' {{cables}}+ 
-	disables cable in fabric
-	add cable to bad cable list (if not one already) unless cable is sibling
-
-    enable: {0} enable 'comment' {{cables}}+ 
-	Note: Only use this command for debugging cable issues
-	enables cable in fabric
-	puts a cable in disabled state back into suspect state (use release to set cable state to watch)
- 
-    casg: {0} casg {{comment}} {{cables}}+ 
-	disables cable in fabric
-	send extraview ticket to CASG
-
-    query: {0} query {{cables}}+ 
-	Query cables status in fabric
- 
-    release: 
-	{0} release {{comment}} {{cables}}+ 
-	{0} resolve {{comment}} {{cables}}+ 
-	    enable cable in fabric
-	    set cable state to watch
-	    close Extraview ticket
-	    release any sibling cables
-	    release sibling status of cable (don't consider cable as sibling anymore)
-
-    rejuvenate: {0} rejuvenate {{comment}} {{cables}}+ 
-	Note: only use this if the cable has been replaced and it was not autodetected
-	release cable
-	sets the suspected count back to 0
-	disassociate Extraview ticket from Cable
-
-    remove: {0} remove {{comment}} {{cables}}+ 
-	Note: only use this if the cable has been removed/replaced permanently
-	release cable
-	sets the cable as removed (disables all future detection against cable)
-
-    plabel: {0} plabel {{physical label}} {{cables}}+ 
-	Assign cable new physical label. (label can be an empty string to use logical label)
- 
-    comment: {0} comment {{comment}} {{cables}}+ 
-	add comment to bad cable's extraview ticket 
-
-    ignore: {0} ignore {{comment}} {{(issue id) i#}}+
-	Note: only use this in special cases for issues that can not be fixed
-	ignore issue with assigned cable until honor requested
-
-    honor: {0} honor {{comment}} {{(issue id) i#}}+
-	removes ignore status of issue
- 
-    parse: {0} parse {{path to ib dumps dir}}
-	reads the output of ibnetdiscover, ibdiagnet2 and ibcv2
-	generates issues against errors found 
-	checks if any cable has been replaced (new SN) and will set that cable back to watch state
-
-    Cable Labels Types: (aka {{cables}}+)
-	cable id: c#
-	ticket id: t#
-	guid/port pairs: S{{guid}}/P{{port}}
-	label: cable port label
-	states: @watch, @suspect, @disabled, @sibling, @removed
-
-    Optional Environment Variables:
-	VERBOSE={{1-5 default=3}}
-	    1: lowest
-	    5: highest
-	    
-	DISABLE_TICKETS={{YES|NO default=NO}}
-	    YES: disable creating and updating tickets (may cause extra errors)
-	    NO: create tickets
-
-	BAD_CABLE_DB={{path to sqlite db defailt=/etc/ncar_bad_cable_list.sqlite}}
-	    Warning: will autocreate if non-existant or empty
-	    Override which sqlite DB to use.
- 
-    """.format(argv[0]))
 
 if not cluster_info.is_mgr():
     die_now("Only run this on the cluster manager")
@@ -1920,6 +1952,10 @@ else:
     CMD=argv[1].lower()
     if CMD == 'parse':
 	run_parse(argv[2])  
+    elif CMD == 'help':
+	dump_help(True)  
+    elif CMD == 'list':
+	list_state('action', None)  
     elif len(argv) < 3:
 	dump_help()  
     else:
