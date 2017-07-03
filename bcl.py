@@ -541,12 +541,33 @@ def resolve_cables(user_input):
 	    cret = resolve_cable(needle)
 	    vlog(4, 'resolving %s to %s' %(needle, cret))
 
-	    if cret and not cret['cid'] in cids:
-		cids.append(cret['cid'])
+	    if cret:
+		if not cret['cid'] in cids:
+		    cids.append(cret['cid'])
 	    else:
 		vlog(2, 'unable to resolve %s to a known cable or port' % (needle))
 
     return cids
+
+def resolve_cable_ports(user_input):
+    """ Resolve user inputed set of strings into cable port id list """
+
+    cpids = []
+
+    if not user_input:
+	return [ None ]
+
+    for needle in user_input:
+	cret = resolve_cable(needle)
+	vlog(4, 'resolving %s to %s' %(needle, cret))
+
+	if cret:
+	    if not cret['cpid'] in cpids:
+		cpids.append(cret['cpid'])
+	else:
+	    vlog(2, 'unable to resolve %s to a known port' % (needle))
+
+    return cpids
 
 def resolve_issues(user_input):
     """ Resolve user inputed set of strings into issue id list """
@@ -629,6 +650,41 @@ def set_plabel_cable(cid, plabel):
 		plabel,
 		cid
 	));
+
+def set_plabel_cableport(cpid, plabel):
+    """ set physical label of cable port """
+
+    if plabel == '':
+	plabel = None
+
+    SQL.execute('''
+	SELECT 
+	    cpid,
+	    plabel
+	FROM 
+	    cable_ports
+	WHERE
+	    cpid = ?
+	LIMIT 1
+    ''',(
+	cpid,
+    ))
+
+    for row in SQL.fetchall():
+	vlog(2, 'set plabel from %s to %s for cable port p%s' % (row['plabel'], plabel, cpid))
+
+	SQL.execute('''
+	    UPDATE
+		cable_ports 
+	    SET
+		plabel = ?
+	    WHERE
+		cpid = ?
+	    ;''', (
+		plabel,
+		cpid
+	));
+ 
 
 def comment_cable(cid, comment):
     """ Add comment to cable """
@@ -1852,9 +1908,12 @@ def dump_help(full = False):
 	    release cable
 	    sets the cable as removed (disables all future detection against cable)
 
-	plabel: {0} plabel {{physical label}} {{cables}}+ 
+	cable_plabel: {0} cable_plabel {{physical label}} {{cables}}+ 
 	    Assign cable new physical label. (label can be an empty string to use logical label)
-     
+
+ 	port_plabel: {0} cable_plabel {{physical label}} {{cable ports}}+ 
+	    Assign cable port new physical label. (label can be an empty string to use logical label)
+ 
 	comment: {0} comment {{comment}} {{cables}}+ 
 	    add comment to bad cable's extraview ticket 
 
@@ -1875,6 +1934,7 @@ def dump_help(full = False):
 	    ticket id: t#
 	    guid/port pairs: S{{guid}}/P{{port}}
 	    label: cable port label
+	    port id: p#
 	    states: @watch, @suspect, @disabled, @sibling, @removed
 
 	Optional Environment Variables:
@@ -1988,9 +2048,12 @@ else:
 	elif CMD == 'honor':
 	    for iid in resolve_issues(argv[3:]):
 		honor_issue(argv[2], iid) 
- 	elif CMD == 'plabel':
+ 	elif CMD == 'cable_plabel':
 	    for cid in resolve_cables(argv[3:]):
 		set_plabel_cable(cid, argv[2])
+  	elif CMD == 'port_plabel':
+	    for cid in resolve_cable_ports(argv[3:]):
+		set_plabel_cableport(cid, argv[2])
 	elif CMD == 'comment':
 	    for cid in resolve_cables(argv[3:]):
 		comment_cable(cid, argv[2]) 
