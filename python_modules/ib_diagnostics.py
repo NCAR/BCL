@@ -6,6 +6,7 @@ import re
 import os
 import csv
 import cluster_info
+import sgi_cluster
 import math
 
 def parse_port ( label ):
@@ -388,34 +389,18 @@ def parse_sgi_ibcv2 ( ports, issues, contents ):
 	""" Parse the ibcv2 specific label names """
 	vlog(5, 'parse_sgi_ibcv2::parse(%s)' % (label))
 
+
 	#r1i0s0c0.16
 	#r9i2s0c1.20
 	#r10i2s0c1.20
- 	port_regex = re.compile(
-	    r"""
-	    r(?P<rack>[0-9]+)  #E-cell Rack - not E-Cell number
-	    i(?P<iru>[0-9]+)
-	    s(?P<switch>[0-9]+)
-	    c(?P<swchip>[0-9]+)
-	    \.
-	    (?P<port>[0-9]+)
-	    """,
-	    re.VERBOSE
-	    )
-
-	match = port_regex.match(label) 
-	if match:        
-	    #Format on the switch labels:
-	    #'r1i3s0 SW0 SwitchX -  Mellanox Technologies'
-
+	p = sgi_cluster.parse_label(label)
+        sgi_cluster.physical_to_logical_dict(p)
+	vlog(4, 'parse %s -> %s' % (label, sgi_cluster.print_label(p, 'simple')))
+ 	
+	if p:        
 	    return resolve_port(ports, {
-		'name': 'r{0}i{1}s{2} SW{3} SwitchX -  Mellanox Technologies'.format(
-		    int(math.ceil(float(match.group('rack')) / 2.0)), #convert rack to ecell
-		    match.group('iru'),
-		    match.group('switch'),
-		    match.group('swchip')
-		),
-		'port': int(match.group('port')),
+		'name': sgi_cluster.print_label(p, 'firmware_name'),
+		'port': int(p['port']),
 		'hca': None,
 		'spine': None,
 		'leaf': None
