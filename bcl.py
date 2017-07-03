@@ -1900,10 +1900,6 @@ BAD_CABLE_DB='/etc/ncar_bad_cable_list.sqlite'
 DISABLE_TICKETS=False
 EV = None
 
-
-if not ('NATE' in os.environ and os.environ['NATE'] == "YES"):
-    die_now('disabled for now')
-
 if 'BAD_CABLE_DB' in os.environ and os.environ['BAD_CABLE_DB']:
     BAD_CABLE_DB=os.environ['BAD_CABLE_DB']
     vlog(1, 'Database: %s' % (BAD_CABLE_DB))
