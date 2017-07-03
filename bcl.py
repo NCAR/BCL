@@ -1919,6 +1919,7 @@ def dump_help(full = False):
 
 	comment: {0} comment {{comment}} {{cables}}+ 
 	    add comment to bad cable's extraview ticket 
+
 	""".format(argv[0]))
      
 
