@@ -1948,12 +1948,13 @@ else:
     CMD=argv[1].lower()
     if CMD == 'parse':
 	run_parse(argv[2])  
-    elif CMD == 'help':
-	dump_help(True)  
-    elif CMD == 'list':
-	list_state('action', None)  
     elif len(argv) < 3:
-	dump_help()  
+	if CMD == 'help':
+	    dump_help(True)  
+	elif CMD == 'list':
+	    list_state('action', None)   
+	else:
+	    dump_help()  
     else:
 	if CMD == 'list':
 	    list_state(argv[2].lower(), argv[3:] if len(argv) > 3 else None)  
