@@ -145,9 +145,9 @@ def print_label(v, pformat = None):
 	    v['switch_chip'],
 	    v['port']
 	)
-    elif pformat == 'firmware':
+    elif pformat == 'firmware' or pformat == 'firmware_name':
 	if not v['switch'] is None:
-	    if v['port'] is None:
+	    if pformat == 'firmware_name' or v['port'] is None:
 		return 'r%si%ss%s SW%s SwitchX -  Mellanox Technologies' % (
 		    v['rack'],
 		    v['iru'],
@@ -163,13 +163,21 @@ def print_label(v, pformat = None):
 		    v['port']
 		)
 	elif not v['node'] is None:
- 	    return 'r%si%ss%s/U%s/P%s' % (
-		v['rack'],
-		v['iru'],
-		v['node'],
-		v['hca'] if v['hca'] else 1, #default to first hca
-		v['port'] if v['port'] else 1, #default to first port
-	    ) 
+	    if pformat == 'firmware_name':
+		return 'r%si%ss%s/U%s' % (
+		    v['rack'],
+		    v['iru'],
+		    v['node'],
+		    v['hca'] if v['hca'] else 1 #default to first hca
+		) 
+	    else:
+ 		return 'r%si%ss%s/U%s/P%s' % (
+		    v['rack'],
+		    v['iru'],
+		    v['node'],
+		    v['hca'] if v['hca'] else 1, #default to first hca
+		    v['port'] if v['port'] else 1, #default to first port
+		) 
     elif pformat == 'physical':
 	if not v['port'] is None:
 	    return '{0:0>3}IRU{1}-{2}-{3}-{4}'.format(
