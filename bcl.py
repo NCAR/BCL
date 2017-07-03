@@ -1910,19 +1910,14 @@ def dump_help(full = False):
 	query: {0} query {{cables}}+ 
 	    Query cables status in fabric (ibportstate query output)
      
-	release: 
-	    {0} release {{comment}} {{cables}}+ 
-	    {0} resolve {{comment}} {{cables}}+ 
-		enable cable in fabric
-		set cable state to watch
+	release: {0} release {{comment}} {{cables}}+ 
+		enable cable in fabric and set cable state to watch
 		close Extraview ticket
 
 	comment: {0} comment {{comment}} {{cables}}+ 
 	    add comment to bad cable's extraview ticket 
 
 	""".format(argv[0]))
-     
-
 
 if not cluster_info.is_mgr():
     die_now("Only run this on the cluster manager")
