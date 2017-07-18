@@ -37,8 +37,8 @@ def get_sm():
     
     host = socket.gethostname()
 
-    if host == 'lamgt1':
-	return ['laufm1', 'laufm2']
+    if host == 'jsmgt1':
+	return ['jsufm1', 'jsufm2']
     elif host == 'ysmgt1':
 	return ['ysufm1', 'ysufm2']
     elif host == 'ermgt1':
