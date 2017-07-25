@@ -18,6 +18,7 @@ import time
 import datetime
 import re
 import csv
+import sys
 
 def initialize_db():
     """ Initialize DATABASE state variable 
@@ -954,7 +955,45 @@ def send_casg(cid, comment):
 	    )
 	});
      
+def dump_inventory():
+    """ Dumps inventory """
 
+    SQL.execute('''
+	SELECT 
+	    SN,
+	    PN,
+	    length,
+	    cp1.flabel as cp1_flabel,
+	    cp2.flabel as cp2_flabel
+	FROM 
+	    cables
+
+	INNER JOIN
+	    cable_ports as cp1
+	ON
+	    cables.cid = cp1.cid
+
+	INNER JOIN
+	    cable_ports as cp2
+	ON
+	    cables.cid = cp2.cid and
+	    cp1.cpid != cp2.cpid
+
+ 	WHERE
+	    state != 'removed' and
+	    cp1.cpid IS NOT NULL and
+	    cp2.cpid IS NOT NULL and
+	    SN IS NOT NULL and
+	    PN IS NOT NULL and
+	    SN != ""
+ 
+    ''')
+
+    csvw = csv.writer(sys.stdout, delimiter=',', quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
+    csvw.writerow(['serial_number', 'product_number', 'length', 'firmware_label_port_1', 'firmware_label_port_2'])
+    for row in SQL.fetchall():
+	csvw.writerow(row)
+ 
 def enable_cable(cid, comment):
     """ enable cable """
 
@@ -1923,6 +1962,9 @@ def dump_help(full = False):
 
 	honor: {0} honor {{comment}} {{(issue id) i#}}+
 	    removes ignore status of issue
+
+ 	inventory: {0} inventory 
+	    dumps CSV with format: serial,product_number,length,end point label,end point label
      
 	parse: {0} parse {{path to ib dumps dir}}
 	    reads the output of ibnetdiscover, ibdiagnet2 and ibcv2
@@ -2013,6 +2055,8 @@ else:
 	    dump_help(True)  
 	elif CMD == 'list':
 	    list_state('action', None)   
+ 	elif CMD == 'inventory':
+	    dump_inventory()
 	else:
 	    dump_help()  
     else:
