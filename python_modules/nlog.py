@@ -11,8 +11,7 @@ def vlog(level, string):
     if vlevel >= level:
 	print string
 
-    if level < 3:
-	syslog.syslog(string)
+    syslog.syslog(string)
 
 def elog(string):
     sys.stderr.write('%s\n' % (string))
