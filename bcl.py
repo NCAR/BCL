@@ -991,8 +991,8 @@ def dump_inventory():
 
     csvw = csv.writer(sys.stdout, delimiter=',', quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
     csvw.writerow(['serial_number', 'product_number', 'length', 'firmware_label_port_1', 'firmware_label_port_2'])
-    for row in SQL.fetchall():
-	csvw.writerow(row)
+    for row in SQL:
+	csvw.writerow(list(row))
  
 def enable_cable(cid, comment):
     """ enable cable """
@@ -2041,7 +2041,7 @@ else:
 
 initialize_db()
 
-vlog(5, argv)
+vlog(3, argv)
 
 if len(argv) < 2:
     dump_help() 
