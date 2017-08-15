@@ -830,7 +830,7 @@ def query_cable_ports(cid):
 	ret = ib_mgt.query_port(int(row['guid']), int(row['port']))
 	for sm,txt in ret.iteritems():
 	    for field in txt:
-		for line in field.split('\n'):
+		for line in field.split(os.linesep):
 		    print '%s: %s' % (row['flabel'], line)
  
 
