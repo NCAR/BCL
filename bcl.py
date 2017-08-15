@@ -2041,7 +2041,7 @@ else:
 
 initialize_db()
 
-vlog(3, argv)
+vlog(5, argv)
 
 if len(argv) < 2:
     dump_help() 
