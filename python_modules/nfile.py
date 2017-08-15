@@ -1,6 +1,8 @@
 #!/usr/bin/python
 from nlog import vlog
 import subprocess 
+import errno    
+import os
 
 def read_file_first_line(filename):
     """ Read first line of given filename """
@@ -50,3 +52,12 @@ def exec_to_string ( cmd, cwd='/tmp/' ):
 
     vlog(1, 'Command %s failed' % cmd)
 
+#https://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
+def mkdir_p(path):
+    try:
+        os.makedirs(path)
+    except OSError as exc:  # Python >2.5
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else:
+            raise
