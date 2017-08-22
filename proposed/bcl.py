@@ -875,7 +875,7 @@ def enable_cable(cid, comment):
 	    ));
 
  	if row['ticket'] and not DISABLE_TICKETS:
-	    EV.add_resolver_comment(row['ticket'], 'Cable %s enabled.' % (row['flabel']))
+	    EV.add_resolver_comment(row['ticket'], 'Cable %s enabled:\n%s' % (row['flabel'],comment))
 	    vlog(3, 'Update Extraview Ticket %s for c%s was enabled' % (row['ticket'], cid))
  
 def disable_cable(cid, comment):
@@ -898,7 +898,7 @@ def disable_cable(cid, comment):
     ))
 
     for row in SQL.fetchall():
-	elif row['state'] == 'disabled':
+	if row['state'] == 'disabled':
  	    vlog(1, 'cable already disabled. ignoring request to disable c%s again.' % (cid))
 	    return                    
  	elif row['state'] == 'watch':
@@ -923,7 +923,7 @@ def disable_cable(cid, comment):
 	disable_cable_ports(cid)
 
 	if row['ticket'] and not DISABLE_TICKETS:
-	    EV.add_resolver_comment(row['ticket'], 'Cable %s disabled.' % (row['flabel']))
+	    EV.add_resolver_comment(row['ticket'], 'Cable %s disabled:\n%s' % (row['flabel'], comment))
 	    vlog(3, 'Update Extraview Ticket %s for c%s was disabled' % (row['ticket'], cid))
 
 def release_cable(cid, comment, full = False):
