@@ -1422,9 +1422,7 @@ def run_parse(dump_dir):
 
 	    FROM 
 		cables
-	    WHERE
-		cables.state != 'removed'
-
+	
 	    INNER JOIN
 		cable_ports as cp1
 	    ON
@@ -1439,6 +1437,9 @@ def run_parse(dump_dir):
 		cables.cid = cp2.cid and
 		cp2.guid = ? and
 		cp2.port = ?    
+
+	    WHERE
+		cables.state != 'removed'
 
 	    ORDER BY cables.ctime DESC
 	    LIMIT 1
@@ -1574,14 +1575,15 @@ def run_parse(dump_dir):
 	hca_found = None
 	replaced_cables=[]
 	cables = find_cables(port1, port2)
-	for cable in cables:
-	    #this is a flawed check if cable lacks PN/SN 
-	    #but we don't have anything better to check against
-	    if cable['SN'] == gv(port1, 'SN') and cable['PN'] == gv(port1, 'PN'):
-		cid = cable['cid']
-		hca_found = cable['has_hca']
-	    else: #found old cable w/ different SN/PN
-		replaced_cables.append(cable['cid'])
+	if cables:
+	    for cable in cables:
+		#this is a flawed check if cable lacks PN/SN 
+		#but we don't have anything better to check against
+		if cable['SN'] == gv(port1, 'SN') and cable['PN'] == gv(port1, 'PN'):
+		    cid = cable['cid']
+		    hca_found = cable['has_hca']
+		else: #found old cable w/ different SN/PN
+		    replaced_cables.append(cable['cid'])
 		
 	if cid is None: #create the cable
 	    cid = insert_cable(port1, port2, timestamp)
@@ -1906,7 +1908,7 @@ if len(argv) < 2:
 else:
     CMD=argv[1].lower()
     if CMD == 'parse':
-	run_parse(argv[2])  
+	run_parse(argv[2])
     elif len(argv) < 3:
 	if CMD == 'help':
 	    dump_help(True)  
