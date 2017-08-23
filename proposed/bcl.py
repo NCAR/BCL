@@ -1590,12 +1590,13 @@ def run_parse(dump_dir):
 	    hca_found = port1['type'] == "CA" or (port2 and port2['type'] == "CA") 
 
 	#mark all the replaced cables (hope its not more than one...)
-	for rcid in mark_replaced_cable:
-	    mark_replaced_cable(
-		rcid, 
-		cid, 
-		'Detected new cable in same physical location'
-	    )
+	if replaced_cables:
+	    for rcid in replaced_cables:
+		mark_replaced_cable(
+		    rcid, 
+		    cid, 
+		    'Detected new cable in same physical location'
+		)
 
 	#record cid in each port to avoid relookup
 	port1['cable_id'] = cid
