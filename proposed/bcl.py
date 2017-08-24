@@ -56,7 +56,11 @@ def initialize_db():
 	    --Physical Label
 	    plabel text,
  	    --Firmware Label
-	    flabel text
+	    flabel text,
+	    --Online (cable last seen online)
+	    online BOOLEAN,
+	    --Last Time seen Online
+	    onlineTime integer 
 	);
 
   	create table if not exists cable_ports (
@@ -99,6 +103,8 @@ def initialize_db():
 
     """)
 
+    sqlite.add_column(SQL, 'cables', 'online', 'BOOLEAN')
+    sqlite.add_column(SQL, 'cables', 'onlineTime', 'integer')
     #sqlite.add_column(SQL, 'cable_ports' , 'enabled', 'BOOLEAN')
 
 def release_db():
@@ -405,16 +411,29 @@ def resolve_cables(user_input):
     for needle in user_input:
 	match = state_match.match(needle)
 	if match:
-	    SQL.execute('''
-		SELECT 
-		    cables.cid
-		FROM 
-		    cables
-		WHERE
-		    cables.state = ?
-	    ''',(
-		match.group('state'),
-	    ))
+	    state = match.group('state').lower()
+	    if state == 'online' or state == 'offline':
+ 		SQL.execute('''
+		    SELECT 
+			cid
+		    FROM 
+			cables
+		    WHERE
+			online = ?
+		''',(
+		    1 if (state == 'online') else 0,
+		))
+	    else:
+		SQL.execute('''
+		    SELECT 
+			cid
+		    FROM 
+			cables
+		    WHERE
+			state = ?
+		''',(
+		    state,
+		))
 
 	    for row in SQL.fetchall():
 		if row['cid'] and not row['cid'] in cids:
@@ -567,7 +586,121 @@ def set_plabel_cableport(cpid, plabel):
 		cpid
 	));
  
+def detect_bisect_cable(cid):
+    """ Detect if disabling cable will bisect the network
+	Warning: returns false if cable is connected to an HCA
+    """
 
+    SQL.execute('''
+	SELECT 
+	    cables.cid,
+	    max(cp1.hca, cp2.hca) as has_hca,
+ 	    cp1.guid as cp1_guid,
+ 	    cp2.guid as cp2_guid
+	FROM 
+	    cables
+
+	INNER JOIN
+	    cable_ports as cp1
+	ON
+	    cables.cid = cp1.cid
+
+	LEFT OUTER JOIN
+	    cable_ports as cp2
+	ON
+	    cables.cid = cp2.cid and
+	    cp1.cpid != cp2.cpid
+
+	WHERE
+	    cables.cid = ?
+    ''', (cid,))
+
+    check_guids = []
+    for row in SQL.fetchall():
+	if row['has_hca'] == 1:
+	    vlog(3, 'Ignoring bisection detection against HCA connected c%s'% (cid))
+	    return False
+ 	if not row['cp1_guid'] or not row['cp2_guid']:
+	    vlog(3, 'Ignoring bisection detection against unconnected cable c%s'% (cid))
+	    return False
+ 
+	check_guids.append(row['cp1_guid'])
+	check_guids.append(row['cp2_guid'])
+	break
+
+    if not check_guids:
+	vlog(1, 'Unable to find Guids for c%s' % (cid))
+	return False
+
+    SQL.execute('''
+	SELECT 
+	    cables.cid as cid,
+	    cp1.guid as cp1_guid,
+ 	    cp2.guid as cp2_guid
+	FROM 
+	    cables
+
+	INNER JOIN
+	    cable_ports as cp1
+	ON
+	    cables.cid = cp1.cid and
+	    cp1.guid != 0 and
+	    cp1.hca = 0
+
+	INNER JOIN
+	    cable_ports as cp2
+	ON
+	    cables.cid = cp2.cid and
+	    cp2.guid != 0 and
+	    cp1.cpid != cp2.cpid and
+	    cp1.hca = 0
+
+	WHERE
+	    state != 'removed' and
+	    state != 'disabled' and
+	    online = 1 and
+	    cables.cid != ?
+    ''', (cid,))
+
+    #detects if there is a path between both guids after cable is removed
+    
+    graph = {}
+    for row in SQL.fetchall():
+	guids = [row['cp1_guid'], row['cp2_guid']]
+
+	vlog(5, 'adding guids to graph: %s ' % (' '.join(guids)))
+	for guid in guids:
+	    if not guid in graph:
+		graph[guid] = set()
+
+	    graph[guid] |= set(guids)
+
+    if not graph:
+	vlog(1, 'unable to generate graph to find bisections. no online connections found.')
+	return True
+ 
+    #simple BFS to find any path
+    vlog(5, 'searching for path between: %s'  % (' '.join(check_guids)))
+    visited = set({check_guids[0],})
+    start = visited.copy()
+    while len(start) > 0:
+	for next in start.copy():
+	    if check_guids[1] == next:
+		vlog(5, 'Found: %s ' % (next))
+		vlog(3, 'No bisection detected if cable c%s is removed' % (cid))
+		return False
+	    else:
+		vlog(5, 'searching: %s adding: %s ' % (next, ' '.join(graph[next])))
+		visited.add(next)
+		start -= set(next)
+		start |= graph[next] - visited
+
+    #vlog(4, 'Guids path from %s: %s' % (' '.join(visited)))
+    vlog(4, 'Guids missing path from %s: %s' % (' '.join(graph.keys() - visited)))
+    vlog(4, 'No path exists between: %s'  % (' '.join(check_guids)))
+    vlog(3, 'Bisection detected if cable c%s is removed' % (cid))
+    return True
+                
 def comment_cable(cid, comment):
     """ Add comment to cable """
 
@@ -671,6 +804,18 @@ def disable_cable_ports(cid):
 	    continue
 
 	ib_mgt.disable_port(int(row['guid']), int(row['port']))
+
+    SQL.execute('''
+        UPDATE
+            cables 
+        SET
+            online = 0
+        WHERE
+            cid = ?
+        ;''', (
+            cid,
+    ));
+ 
 
 def enable_cable_ports(cid):
     """ Enables cable ports in fabric """
@@ -881,6 +1026,10 @@ def enable_cable(cid, comment):
 def disable_cable(cid, comment):
     """ disable cable """
 
+    if not DISABLE_BISECT_DETECT and detect_bisect_cable(cid):
+	vlog(1, 'Refusing to disable cable c%s as it will cause a network bisection' % (cid))
+	return False
+
     SQL.execute('''
 	SELECT 
 	    cables.cid,
@@ -912,6 +1061,7 @@ def disable_cable(cid, comment):
 		cables 
 	    SET
 		state = 'disabled',
+		online = 0,
 		comment = ?
 	    WHERE
 		cid = ?
@@ -1616,13 +1766,39 @@ def run_parse(dump_dir):
 		state
 	    FROM 
 		cables
-	    WHERE
-		state != 'removed' and
-		state != 'disabled'
 	''')
     for row in SQL.fetchall():
-	if not row['cid'] in known_cables:
-	    missing_cables.append(int(row['cid']))
+	if row['cid'] in known_cables:
+	    #cable found, mark it online and when
+ 	    SQL.execute('''
+		UPDATE
+		    cables 
+		SET
+		    online = 1,
+		    onlineTime = ?
+		WHERE
+		    cid = ?
+		;''', (
+		    int(timestamp),
+		    row['cid']
+	    ));
+ 
+	else: #cable not found
+	    if not row['state'] in ['removed', 'disabled']:
+		#only note cables if they should not be missing
+		missing_cables.append(int(row['cid']))
+
+	    #Mark cable offline
+	    SQL.execute('''
+		UPDATE
+		    cables 
+		SET
+		    online = 0
+		WHERE
+		    cid = ?
+		;''', (
+		    row['cid'],
+	    ));
 
     for cid in missing_cables:
 	#Verify missing cables actually matter: ignore single port cables (aka unconnected)
@@ -1838,7 +2014,7 @@ def dump_help(full = False):
 	    guid/port pairs: S{{guid}}/P{{port}}
 	    label: cable port label
 	    port id: p#
-	    states: @watch, @suspect, @disabled, @removed
+	    states: @watch, @suspect, @disabled, @removed, @online, @offline
 
 	Optional Environment Variables:
 	    VERBOSE={{1-5 default=3}}
@@ -1848,6 +2024,10 @@ def dump_help(full = False):
 	    DISABLE_TICKETS={{YES|NO default=NO}}
 		YES: disable creating and updating tickets (may cause extra errors)
 		NO: create tickets
+
+	    DISABLE_BISECT_DETECT={{YES|NO default=NO}} 
+		YES: Bisection detection will be disabled
+		NO: Detect network bisection and refuse commands that will cause a network bisection
 
 	    BAD_CABLE_DB={{path to sqlite db defailt=/etc/ncar_bad_cable_list.sqlite}}
 		Warning: will autocreate if non-existant or empty
@@ -1887,6 +2067,7 @@ if not cluster_info.is_mgr():
 BAD_CABLE_DB='/etc/ncar_bad_cable_list.sqlite'
 """ const string: Path to JSON database for bad cable list """
 
+DISABLE_BISECT_DETECT=False
 DISABLE_TICKETS=False
 EV = None
 
@@ -1896,9 +2077,13 @@ if 'BAD_CABLE_DB' in os.environ and os.environ['BAD_CABLE_DB']:
 
 if 'DISABLE_TICKETS' in os.environ and os.environ['DISABLE_TICKETS'] == "YES":
     DISABLE_TICKETS=True
-    vlog(1, 'Disabling creating of extraview tickets')
+    vlog(1, 'Warning: Disabling creating of extraview tickets')
 else:
     EV = extraview_cli.open_extraview()
+
+if 'DISABLE_BISECT_DETECT' in os.environ and os.environ['DISABLE_BISECT_DETECT'] == "YES":
+    DISABLE_BISECT_DETECT=True
+    vlog(1, 'Warning: Disabling bisection detection.')
 
 initialize_db()
 
@@ -1910,6 +2095,9 @@ else:
     CMD=argv[1].lower()
     if CMD == 'parse':
 	run_parse(argv[2])
+    elif CMD == 'bisect':
+	for cid in resolve_cables(argv[2:]):
+	    detect_bisect_cable(cid)  
     elif len(argv) < 3:
 	if CMD == 'help':
 	    dump_help(True)  
@@ -1961,7 +2149,7 @@ else:
 	elif CMD == 'comment':
 	    for cid in resolve_cables(argv[3:]):
 		comment_cable(cid, argv[2]) 
-	else:
+        else:
 	    dump_help() 
 
 release_db()
