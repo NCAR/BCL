@@ -1404,6 +1404,8 @@ def list_state(what, list_filter):
 
 def mark_replaced_cable(cid, new_cid, comment):
     """ Marks cable as replaced by new cable """
+    vlog(5, 'Mark replaced cable cid=%s new_cid=%s' % (cid, new_cid))
+
     if cid == new_cid:
 	return
 
@@ -1423,7 +1425,7 @@ def mark_replaced_cable(cid, new_cid, comment):
             cid != ? 
         LIMIT 1
     ''',(
-        cid
+        cid,
     ))
     
     old_SN = None
@@ -1454,7 +1456,7 @@ def mark_replaced_cable(cid, new_cid, comment):
             cid != ? 
         LIMIT 1
     ''',(
-        cid
+        cid,
     ))
     
     new_SN = None
@@ -1470,7 +1472,7 @@ def mark_replaced_cable(cid, new_cid, comment):
 	new_flabel = row['flabel'] 
 
     vlog(3, 'replacing c%s with cable %s' % (cid, new_cid))
-    if old_Ticket:
+    if old_ticket:
 	vlog(4, 'Updated Ticket %s for c%s for replacement cable %s' % (old_ticket, cid, new_cid))
 	if not DISABLE_TICKETS:
 	    EV.add_resolver_comment(old_ticket, '''
@@ -1540,7 +1542,7 @@ def run_parse(dump_dir):
     
     def find_cables(port1, port2):
 	""" Find any cable in db that match guid/port pairs 
-	Warning: this will find crossed cables into existing ports
+	Warning: this may find crossed cables into existing ports
 	Warning: will not find any removed cables
 	port1: ib_diagnostics formatted port
 	port2: ib_diagnostics formatted port
@@ -1559,6 +1561,7 @@ def run_parse(dump_dir):
 	    port1 = port_tmp
 
 	if not port1:
+	    vlog(1, 'Error: attempt to find cable no ports? %s %s' % (port1, port2))
 	    return None
 
 	#Attempt to find the any matching cable by the ports
@@ -1592,7 +1595,6 @@ def run_parse(dump_dir):
 		cables.state != 'removed'
 
 	    ORDER BY cables.ctime DESC
-	    LIMIT 1
 	''',(
 	    convert_guid_intstr(port1['guid']),
 	    int(port1['port']),
@@ -1601,17 +1603,16 @@ def run_parse(dump_dir):
 	    int(port2['port']) if port2 else None,
 	))
 
-	cables = {}
-	rows = SQL.fetchall()
-	if len(rows) > 0:
-	    for row in rows:
-		cables[row['cid']] = { 
-			'has_hca': row['has_hca'],
-			'SN': row['SN'],
-			'PN': row['PN']
-		}
-	else:
-	    return None
+	cables = []
+	for row in SQL.fetchall():
+	    cables.append({ 
+		    'cid': int(row['cid']),
+		    'has_hca': True if row['has_hca'] == 1 else False,
+		    'SN': row['SN'],
+		    'PN': row['PN']
+	    })
+
+	return cables
 
     def insert_cable(port1, port2, timestamp):
 	""" insert new cable into db """
@@ -1725,17 +1726,19 @@ def run_parse(dump_dir):
 	hca_found = None
 	replaced_cables=[]
 	cables = find_cables(port1, port2)
-	if cables:
-	    for cable in cables:
-		#this is a flawed check if cable lacks PN/SN 
-		#but we don't have anything better to check against
-		if cable['SN'] == gv(port1, 'SN') and cable['PN'] == gv(port1, 'PN'):
-		    cid = cable['cid']
-		    hca_found = cable['has_hca']
-		else: #found old cable w/ different SN/PN
-		    replaced_cables.append(cable['cid'])
+	for cable in cables:
+	    #this is a flawed check if cable lacks PN/SN 
+	    #but we don't have anything better to check against
+	    if cable['SN'] == gv(port1, 'SN') and cable['PN'] == gv(port1, 'PN'):
+		cid = cable['cid']
+		hca_found = cable['has_hca']
+		vlog(5, 'Found matching cable c%s' % (cid))
+	    else: #found old cable w/ different SN/PN
+		replaced_cables.append(cable['cid'])
+		vlog(5, 'Found replaced cable c%s' % (cable['cid']))
 		
 	if cid is None: #create the cable
+	    vlog(5, 'Unable to find matching cable. Creating new cable')
 	    cid = insert_cable(port1, port2, timestamp)
 	    hca_found = port1['type'] == "CA" or (port2 and port2['type'] == "CA") 
 
