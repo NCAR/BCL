@@ -761,16 +761,18 @@ def enable_cable_ports(cid):
 	elif not DISABLE_PORT_STATE_CHANGE:
 	    ib_mgt.enable_port(int(row['guid']), int(row['port'])) 
 
-def remove_cable(cid, comment):
+def remove_cable(cid, comment, release = True):
     """ marks cable as removed """
     
-    release_cable(cid, comment)
+    if release:
+	release_cable(cid, comment)
     
     SQL.execute('''
         UPDATE
             cables 
         SET
             state = 'removed',
+	    online = 0,
             comment = ?
         WHERE
             cid = ?
@@ -1473,7 +1475,7 @@ def mark_replaced_cable(cid, new_cid, comment):
 	new_ticket = row['ticket']
 	new_flabel = row['flabel'] 
 
-    vlog(3, 'replacing c%s with cable %s' % (cid, new_cid))
+    vlog(3, 'Replacing c%s with cable c%s' % (cid, new_cid))
     if old_ticket:
 	vlog(4, 'Updated Ticket %s for c%s for replacement cable %s' % (old_ticket, cid, new_cid))
 	if not DISABLE_TICKETS:
@@ -1524,7 +1526,7 @@ def mark_replaced_cable(cid, new_cid, comment):
 	else:
 	    vlog(3, 'replacement cable c%s already has ticket t%s assigned' % (new_cid, new_ticket))
 
-    remove_cable(row['cid'], comment) 
+    remove_cable(cid, comment, False) 
 
 def convert_guid_intstr(guid):
     """ normalise representation of guid to string of an integer 
@@ -1750,7 +1752,7 @@ def run_parse(dump_dir):
 		mark_replaced_cable(
 		    rcid, 
 		    cid, 
-		    'Detected new cable in same physical location'
+		    'Detected new cable c%s in same physical location' % (cid)
 		)
 
 	#record cid in each port to avoid relookup
