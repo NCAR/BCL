@@ -758,7 +758,7 @@ def enable_cable_ports(cid):
     for row in SQL.fetchall(): 
 	if row['hca']:
 	    vlog(3, 'skip enabling hca for p%s' % ( row['cpid'] ))
-	else:
+	elif not DISABLE_PORT_STATE_CHANGE:
 	    ib_mgt.enable_port(int(row['guid']), int(row['port'])) 
 
 def remove_cable(cid, comment):
@@ -803,7 +803,8 @@ def disable_cable_ports(cid):
 	    vlog(1, 'ignoring request to disable HCA p%s.' % (row['cpid']))
 	    continue
 
-	ib_mgt.disable_port(int(row['guid']), int(row['port']))
+	if not DISABLE_PORT_STATE_CHANGE: 
+	    ib_mgt.disable_port(int(row['guid']), int(row['port']))
 
     SQL.execute('''
         UPDATE
@@ -833,7 +834,8 @@ def enable_cable_ports(cid):
     ))
 
     for row in SQL.fetchall(): 
-	ib_mgt.enable_port(int(row['guid']), int(row['port']))
+	if not DISABLE_PORT_STATE_CHANGE: 
+	    ib_mgt.enable_port(int(row['guid']), int(row['port']))
 
 def query_cable_ports(cid):
     """ Queries cable ports in fabric """
@@ -2032,6 +2034,10 @@ def dump_help(full = False):
 		YES: Bisection detection will be disabled
 		NO: Detect network bisection and refuse commands that will cause a network bisection
 
+ 	    DISABLE_PORT_STATE_CHANGE={{YES|NO default=NO}} 
+		YES: Disable all port state change commands
+		NO: Disable and and enable ports as commanded
+
 	    BAD_CABLE_DB={{path to sqlite db defailt=/etc/ncar_bad_cable_list.sqlite}}
 		Warning: will autocreate if non-existant or empty
 		Override which sqlite DB to use.
@@ -2070,6 +2076,7 @@ if not cluster_info.is_mgr():
 BAD_CABLE_DB='/etc/ncar_bad_cable_list.sqlite'
 """ const string: Path to JSON database for bad cable list """
 
+DISABLE_PORT_STATE_CHANGE=False
 DISABLE_BISECT_DETECT=False
 DISABLE_TICKETS=False
 EV = None
@@ -2087,6 +2094,10 @@ else:
 if 'DISABLE_BISECT_DETECT' in os.environ and os.environ['DISABLE_BISECT_DETECT'] == "YES":
     DISABLE_BISECT_DETECT=True
     vlog(1, 'Warning: Disabling bisection detection.')
+
+if 'DISABLE_PORT_STATE_CHANGE' in os.environ and os.environ['DISABLE_PORT_STATE_CHANGE'] == "YES":
+    DISABLE_BISECT_DETECT=True
+    vlog(1, 'Warning: Disabling port state changes.') 
 
 initialize_db()
 
