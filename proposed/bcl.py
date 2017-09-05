@@ -681,7 +681,8 @@ def detect_bisect_cable(cid):
  
     #simple BFS to find any path
     vlog(5, 'searching for path between: %s'  % (' '.join(check_guids)))
-    visited = set({check_guids[0],})
+    visited = set()
+    visited.add(check_guids[0])
     start = visited.copy()
     while len(start) > 0:
 	for next in start.copy():
@@ -1460,7 +1461,7 @@ def mark_replaced_cable(cid, new_cid, comment):
             cid != ? 
         LIMIT 1
     ''',(
-        cid,
+        new_cid,
     ))
     
     new_SN = None
