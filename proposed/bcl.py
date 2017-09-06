@@ -63,6 +63,10 @@ def initialize_db():
 	    onlineTime integer 
 	);
 
+        --may not need these indexs yet
+        --CREATE INDEX IF NOT EXISTS cables_state_index on cables (state);
+        --CREATE INDEX IF NOT EXISTS cables_online_index on cables (online);
+
   	create table if not exists cable_ports (
 	    cpid INTEGER PRIMARY KEY AUTOINCREMENT, 
 	    cid integer,
@@ -81,6 +85,7 @@ def initialize_db():
 	);
 
         CREATE INDEX IF NOT EXISTS cable_ports_guid_index on cable_ports  (guid, port);
+        CREATE INDEX IF NOT EXISTS cable_ports_guid_cid_index on cable_ports  (cid, guid, port);
 
   	CREATE TABLE IF NOT EXISTS issues (
 	    iid INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1478,8 +1483,8 @@ def mark_replaced_cable(cid, new_cid, comment):
 
     vlog(3, 'Replacing c%s with cable c%s' % (cid, new_cid))
     if old_ticket:
-	vlog(4, 'Updated Ticket %s for c%s for replacement cable %s' % (old_ticket, cid, new_cid))
 	if not DISABLE_TICKETS:
+            vlog(4, 'Updated Ticket %s for c%s for replacement cable %s' % (old_ticket, cid, new_cid))
 	    EV.add_resolver_comment(old_ticket, '''
 		This cable has been replaced by a new cable:
 
@@ -1561,9 +1566,7 @@ def run_parse(dump_dir):
 	if port2 and int(port1['guid'], 16) > int(port2['guid'], 16):
 	    #always order the ports by largest gid as port 2
 	    #order doesnt matter as long as it is stable
-	    port_tmp = port2
-	    port2 = port1
-	    port1 = port_tmp
+            port1, port2 = port2, port1
 
 	if not port1:
 	    vlog(1, 'Error: attempt to find cable no ports? %s %s' % (port1, port2))
@@ -1731,17 +1734,39 @@ def run_parse(dump_dir):
 	hca_found = None
 	replaced_cables=[]
 	cables = find_cables(port1, port2)
-	for cable in cables:
-	    #this is a flawed check if cable lacks PN/SN 
-	    #but we don't have anything better to check against
-	    if cable['SN'] == gv(port1, 'SN') and cable['PN'] == gv(port1, 'PN'):
-		cid = cable['cid']
-		hca_found = cable['has_hca']
-		vlog(5, 'Found matching cable c%s' % (cid))
-	    else: #found old cable w/ different SN/PN
-		replaced_cables.append(cable['cid'])
-		vlog(5, 'Found replaced cable c%s' % (cable['cid']))
-		
+        #If the current existing cable has a SN/PN, then favor the cable that matches
+        if gv(port1, 'SN') and gv(port1, 'PN'):
+            for cable in cables:
+                if cable['SN'] == gv(port1, 'SN') and cable['PN'] == gv(port1, 'PN'):
+                    cid = cable['cid']
+                    hca_found = cable['has_hca']
+                    vlog(5, 'Found matching cable c%s' % (cid))
+                else: #found old cable w/ different SN/PN
+                    replaced_cables.append(cable['cid'])
+                    vlog(5, 'Found replaced cable c%s' % (cable['cid']))
+        else: 
+            #if the detected live cable lacks a SN/PN, favor the cable that has one
+            #ignore any replacements since current cable is unplugged or half-dead
+            cid_nosn = None
+            cid_nosn_hca_fiound = None
+	    for cable in cables:
+                if cable['SN'] and cable['PN']:
+                    cid = cable['cid']
+                    hca_found = cable['has_hca']
+                    vlog(5, 'Found matching cable c%s with serial: %s product: %s' % (cid,cable['SN'],cable['PN']))
+                    break
+                else:
+                    #record first cable found if no SN/PN are found
+                    if not cid_nosn:
+                        cid_nosn = cable['cid']
+                        cid_nosn_hca_fiound = cable['has_hca']
+
+            if cid is None and cid_nosn:
+                #unable to find a cable with a SN/PN, just take first cable found
+                cid = cid_nosn 
+                hca_found  = cid_nosn_hca_fiound  
+                vlog(5, 'Found matching cable c%s without serial' % (cid))
+	
 	if cid is None: #create the cable
 	    vlog(5, 'Unable to find matching cable. Creating new cable')
 	    cid = insert_cable(port1, port2, timestamp)
@@ -2083,9 +2108,11 @@ DISABLE_PORT_STATE_CHANGE=False
 DISABLE_BISECT_DETECT=False
 DISABLE_TICKETS=False
 EV = None
+syslog.openlog('bcl.py')
 
 if 'BAD_CABLE_DB' in os.environ and os.environ['BAD_CABLE_DB']:
     BAD_CABLE_DB=os.environ['BAD_CABLE_DB']
+    syslog.openlog('bcl.py::override')
     vlog(1, 'Database: %s' % (BAD_CABLE_DB))
 
 if 'DISABLE_TICKETS' in os.environ and os.environ['DISABLE_TICKETS'] == "YES":
