@@ -400,7 +400,7 @@ def parse_sgi_ibcv2 ( ports, issues, contents ):
 	if p:        
 	    return resolve_port(ports, {
 		'name': sgi_cluster.print_label(p, 'firmware_name'),
-		'port': int(p['port']),
+                'port': int(p['port']) if 'port' in p['port'] and not p['port'] is None : None,
 		'hca': None,
 		'spine': None,
 		'leaf': None
