@@ -46,11 +46,8 @@ def initialize_db():
 	    SN text,
 	    --Product Number
 	    PN text 
-	    --State enum - watch, suspect, disabled, sibling, removed
+	    --State enum - watch, suspect, disabled, removed
 	    state text,
-	    --Sibling cable that this cable is being disabled for currently
-	    --only 1 sibling per cable
-	    sibling INTEGER,
 	    comment BLOB,
 	    --Number of times that cable has gone into suspect state
 	    suspected INTEGER,
@@ -60,8 +57,15 @@ def initialize_db():
 	    plabel text,
  	    --Firmware Label
 	    flabel text,
-	    FOREIGN KEY (sibling) REFERENCES cables(cid)
+	    --Online (cable last seen online)
+	    online BOOLEAN,
+	    --Last Time seen Online
+	    onlineTime integer 
 	);
+
+        --may not need these indexs yet
+        --CREATE INDEX IF NOT EXISTS cables_state_index on cables (state);
+        --CREATE INDEX IF NOT EXISTS cables_online_index on cables (online);
 
   	create table if not exists cable_ports (
 	    cpid INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -81,6 +85,7 @@ def initialize_db():
 	);
 
         CREATE INDEX IF NOT EXISTS cable_ports_guid_index on cable_ports  (guid, port);
+        CREATE INDEX IF NOT EXISTS cable_ports_guid_cid_index on cable_ports  (cid, guid, port);
 
   	CREATE TABLE IF NOT EXISTS issues (
 	    iid INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,6 +108,8 @@ def initialize_db():
 
     """)
 
+    sqlite.add_column(SQL, 'cables', 'online', 'BOOLEAN')
+    sqlite.add_column(SQL, 'cables', 'onlineTime', 'integer')
     #sqlite.add_column(SQL, 'cable_ports' , 'enabled', 'BOOLEAN')
 
 def release_db():
@@ -110,115 +117,6 @@ def release_db():
     global BAD_CABLE_DB, SQL_CONNECTION, SQL
     sqlite.close(SQL_CONNECTION, SQL)
     vlog(5, 'released db')
-
-def add_sibling(cid, source_cid, comment):
-    """ Add sibling against source_cid """
-    global EV
-
-    if not cid or not source_cid:
-	vlog(1, 'invalid cid c%s or source cid c%s' % (cid, source_cid))
-	return
-
-    source_cid_ticket = None
-    source_label = None
-
-    SQL.execute('''
-	SELECT 
-	    cables.cid,
-	    cables.state,
-	    cables.ticket,
-	    cables.flabel
-	FROM 
-	    cables
-	WHERE
-	    cables.cid = ?
-	LIMIT 1
-    ''',(
-	source_cid,
-    ))
-
-    for row in SQL.fetchall():
-	if row['state'] == 'watch' or row['state'] == 'sibling':
-	    vlog(3, 'ignoring sibling cable c%s against c%s as state is %s' % (cid, source_cid, row['state']))
-	    return
-
-	source_cid_ticket = row['ticket']
-	source_label = row['flabel']
-
-    SQL.execute('''
-	SELECT 
-	    cables.cid,
-	    cables.state as state,
-	    cables.ticket,
-	    cables.flabel,
-	    cp1.guid as cp1_guid,
-	    cp1.port as cp1_port,
- 	    cp2.guid as cp2_guid,
-	    cp2.port as cp2_port
-	FROM 
-	    cables
-
-	INNER JOIN
-	    cable_ports as cp1
-	ON
-	    cables.cid = ? and
-	    cables.cid = cp1.cid
-
-	LEFT OUTER JOIN
-	    cable_ports as cp2
-	ON
-	    cables.cid = cp2.cid and
-	    cp1.cpid != cp2.cpid
-             
-	LIMIT 1
-    ''',(
-	cid,
-    ))
-
-    for row in SQL.fetchall():
-	if row['state'] != 'watch':
-	    vlog(3, 'ignoring sibling cable c%s from state %s against c%s. only cables in watch state can be a sibling.' % (cid, row['state'],source_cid))
-	    return  
-
-	vlog(3, 'setting sibling cable c%s in %s against cable c%s' % (cid, row['state'], source_cid))
-
-	disable_cable_ports(cid)
-
-	SQL.execute('''
-	    UPDATE
-		cables 
-	    SET
-		state = 'sibling',
-		sibling = ?,
-		comment = ?
-	    WHERE
-		cid = ?
-	    ;''', (
-		source_cid,
-		comment,
-		cid
-	));
-
-	msg =  '''
-		Cable %s has been disabled in fabric. Cable marked as sibling to %s.
-
-		Bad Cable Ticket# %s
-		Sibling Cable Ticket# %s
-	    ''' % (
-		row['flabel'],
-		source_label,
-		source_cid_ticket,
-		row['Ticket'],
-	    )
-
-	if row['ticket'] and not DISABLE_TICKETS:
-	    vlog(3, 'updated Extraview Ticket %s for c%s' % (row['ticket'], cid))
-	    EV.add_resolver_comment(row['ticket'], msg)
-
-	if source_cid_ticket and not DISABLE_TICKETS:
-	    EV.add_resolver_comment(source_cid_ticket, msg)
-            vlog(3, 'updated Extraview Ticket %s for source c%s' % (source_cid_ticket, source_cid))
-
 
 def add_issue(issue_type, cid, issue, raw, source, timestamp):
     """ Add issue to issues list """
@@ -308,7 +206,6 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 	    cables.state,
 	    cables.suspected,
 	    cables.ticket,
-	    cables.sibling as sibling,
 	    cp1.flabel as cp1_flabel,
 	    cp2.flabel as cp2_flabel
 	FROM 
@@ -340,7 +237,7 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 	    cname = row['cp1_flabel']
 	tid = row['ticket'] 
              
-	if row['state'] == 'watch' or row['state'] == 'sibling':
+	if row['state'] == 'watch':
 	    #cable was only being watched. send it to suspect
 	    if tid is None and not DISABLE_TICKETS: 
 		tid = EV.create( 
@@ -369,10 +266,6 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 		    ''' % (suspected)
 		});
 
-	    if row['sibling']:
-		#suspect cable should not be a sibling
-		vlog(3, 'Releasing sibling status of c%s from c%s' % (cid, row['sibling']))
-
 	    SQL.execute('''
 		UPDATE
 		    cables 
@@ -380,7 +273,6 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 		    state = 'suspect',
 		    suspected = ?,
 		    ticket = ?,
-		    sibling = NULL,
 		    mtime = ?
 		WHERE
 		    cid = ?
@@ -524,16 +416,29 @@ def resolve_cables(user_input):
     for needle in user_input:
 	match = state_match.match(needle)
 	if match:
-	    SQL.execute('''
-		SELECT 
-		    cables.cid
-		FROM 
-		    cables
-		WHERE
-		    cables.state = ?
-	    ''',(
-		match.group('state'),
-	    ))
+	    state = match.group('state').lower()
+	    if state == 'online' or state == 'offline':
+ 		SQL.execute('''
+		    SELECT 
+			cid
+		    FROM 
+			cables
+		    WHERE
+			online = ?
+		''',(
+		    1 if (state == 'online') else 0,
+		))
+	    else:
+		SQL.execute('''
+		    SELECT 
+			cid
+		    FROM 
+			cables
+		    WHERE
+			state = ?
+		''',(
+		    state,
+		))
 
 	    for row in SQL.fetchall():
 		if row['cid'] and not row['cid'] in cids:
@@ -686,7 +591,122 @@ def set_plabel_cableport(cpid, plabel):
 		cpid
 	));
  
+def detect_bisect_cable(cid):
+    """ Detect if disabling cable will bisect the network
+	Warning: returns false if cable is connected to an HCA
+    """
 
+    SQL.execute('''
+	SELECT 
+	    cables.cid,
+	    max(cp1.hca, cp2.hca) as has_hca,
+ 	    cp1.guid as cp1_guid,
+ 	    cp2.guid as cp2_guid
+	FROM 
+	    cables
+
+	INNER JOIN
+	    cable_ports as cp1
+	ON
+	    cables.cid = cp1.cid
+
+	LEFT OUTER JOIN
+	    cable_ports as cp2
+	ON
+	    cables.cid = cp2.cid and
+	    cp1.cpid != cp2.cpid
+
+	WHERE
+	    cables.cid = ?
+    ''', (cid,))
+
+    check_guids = []
+    for row in SQL.fetchall():
+	if row['has_hca'] == 1:
+	    vlog(3, 'Ignoring bisection detection against HCA connected c%s'% (cid))
+	    return False
+ 	if not row['cp1_guid'] or not row['cp2_guid']:
+	    vlog(3, 'Ignoring bisection detection against unconnected cable c%s'% (cid))
+	    return False
+ 
+	check_guids.append(row['cp1_guid'])
+	check_guids.append(row['cp2_guid'])
+	break
+
+    if not check_guids:
+	vlog(1, 'Unable to find Guids for c%s' % (cid))
+	return False
+
+    SQL.execute('''
+	SELECT 
+	    cables.cid as cid,
+	    cp1.guid as cp1_guid,
+ 	    cp2.guid as cp2_guid
+	FROM 
+	    cables
+
+	INNER JOIN
+	    cable_ports as cp1
+	ON
+	    cables.cid = cp1.cid and
+	    cp1.guid != 0 and
+	    cp1.hca = 0
+
+	INNER JOIN
+	    cable_ports as cp2
+	ON
+	    cables.cid = cp2.cid and
+	    cp2.guid != 0 and
+	    cp1.cpid != cp2.cpid and
+	    cp1.hca = 0
+
+	WHERE
+	    state != 'removed' and
+	    state != 'disabled' and
+	    online = 1 and
+	    cables.cid != ?
+    ''', (cid,))
+
+    #detects if there is a path between both guids after cable is removed
+    
+    graph = {}
+    for row in SQL.fetchall():
+	guids = [row['cp1_guid'], row['cp2_guid']]
+
+	vlog(5, 'adding guids to graph: %s ' % (' '.join(guids)))
+	for guid in guids:
+	    if not guid in graph:
+		graph[guid] = set()
+
+	    graph[guid] |= set(guids)
+
+    if not graph:
+	vlog(1, 'unable to generate graph to find bisections. no online connections found.')
+	return True
+ 
+    #simple BFS to find any path
+    vlog(5, 'searching for path between: %s'  % (' '.join(check_guids)))
+    visited = set()
+    visited.add(check_guids[0])
+    start = visited.copy()
+    while len(start) > 0:
+	for next in start.copy():
+	    if check_guids[1] == next:
+		vlog(5, 'Found: %s ' % (next))
+		vlog(3, 'No bisection detected if cable c%s is removed' % (cid))
+		return False
+	    else:
+		vlog(5, 'searching: %s adding: %s ' % (next, ' '.join(graph[next])))
+		visited.add(next)
+		start -= set(next)
+		start |= graph[next] - visited
+
+    #vlog(4, 'Guids path from %s: %s' % (' '.join(visited)))
+    vlog(4, 'Guids missing path from %s: %s' % (' '.join(graph.keys() - visited)))
+    vlog(4, 'No path exists between: %s'  % (' '.join(check_guids)))
+    vlog(3, 'Bisection detected if cable c%s is removed' % (cid))
+    return True
+                
 def comment_cable(cid, comment):
     """ Add comment to cable """
 
@@ -744,21 +764,22 @@ def enable_cable_ports(cid):
     for row in SQL.fetchall(): 
 	if row['hca']:
 	    vlog(3, 'skip enabling hca for p%s' % ( row['cpid'] ))
-	else:
+	elif not DISABLE_PORT_STATE_CHANGE:
 	    ib_mgt.enable_port(int(row['guid']), int(row['port'])) 
 
-def remove_cable(cid, comment):
+def remove_cable(cid, comment, release = True):
     """ marks cable as removed """
     
-    release_cable(cid, comment)
+    if release:
+	release_cable(cid, comment)
     
     SQL.execute('''
         UPDATE
             cables 
         SET
             state = 'removed',
-            comment = ?,
-            sibling = NULL
+	    online = 0,
+            comment = ?
         WHERE
             cid = ?
         ;''', (
@@ -790,7 +811,20 @@ def disable_cable_ports(cid):
 	    vlog(1, 'ignoring request to disable HCA p%s.' % (row['cpid']))
 	    continue
 
-	ib_mgt.disable_port(int(row['guid']), int(row['port']))
+	if not DISABLE_PORT_STATE_CHANGE: 
+	    ib_mgt.disable_port(int(row['guid']), int(row['port']))
+
+    SQL.execute('''
+        UPDATE
+            cables 
+        SET
+            online = 0
+        WHERE
+            cid = ?
+        ;''', (
+            cid,
+    ));
+ 
 
 def enable_cable_ports(cid):
     """ Enables cable ports in fabric """
@@ -808,7 +842,8 @@ def enable_cable_ports(cid):
     ))
 
     for row in SQL.fetchall(): 
-	ib_mgt.enable_port(int(row['guid']), int(row['port']))
+	if not DISABLE_PORT_STATE_CHANGE: 
+	    ib_mgt.enable_port(int(row['guid']), int(row['port']))
 
 def query_cable_ports(cid):
     """ Queries cable ports in fabric """
@@ -845,7 +880,6 @@ def send_casg(cid, comment):
     suspected = None
     plabel = None
     flabel = None
-    siblings = []
 
     SQL.execute('''
 	SELECT 
@@ -878,41 +912,6 @@ def send_casg(cid, comment):
 	vlog(1, 'Cable c%s does not have an associated Extraview Ticket. Refusing to send non-existant ticket to casg' % (cid))
 	return False
 
-    #find all siblings
-    SQL.execute('''
-	SELECT 
-	    ticket,
-	    length,
-	    SN,
-	    PN,
-	    plabel,
-	    flabel
-	FROM 
-	    cables
-        WHERE
-	    cables.sibling = ?
-	LIMIT 1
-    ''',(
-	cid,
-    ))
-
-    for row in SQL.fetchall(): 
-	siblings.append( '''
-	    Physical Cable Label: %s
-	    Software Cable Label: %s
-	    Length: %s
-	    Serial: %s
-	    Product Number: %s
-	    Ticket: %s 
-	''' % (
-	    row['plabel'] if row['plabel'] else row['flabel'], 
-	    row['flabel'],
-	    row['length'] if row['length'] else 'Unknown',
-	    row['SN'] if row['SN'] else 'Unknown',
-	    row['PN'] if row['PN'] else 'Unknown',
-	    row['ticket']
-	))
-
     #EV.assign_group(tid, 'casg', None, {
     if not DISABLE_TICKETS:
 	vlog(3, 'Sent Ticket %s to CASG' % (tid))
@@ -927,7 +926,10 @@ def send_casg(cid, comment):
 	    'COMMENTS':	'''
 		CASG,
 
-		The follow cable has been marked for repairs and has been disabled.
+		The follow cable has been marked for repairs following:
+
+		    https://wiki.ucar.edu/display/ssg/Infiniband+Cable+Repair+-+DRAFT
+
 		This cable has had %s events that required repair to date.
 
 		%s
@@ -939,9 +941,6 @@ def send_casg(cid, comment):
 
 		%s
 
-		The following cables have also been shutdown for this repair work:
-		%s
-
 		Please verify that the cable ports are dark before repairing cable or return ticket noting the cables are not disabled.
 		If there are any questions or issues, please return this ticket to SSG with details.
 	    ''' % (
@@ -950,8 +949,7 @@ def send_casg(cid, comment):
 		    length if length else 'Unknown',
 		    SN if SN else 'Unknown',
 		    PN if PN else 'Unknown',
-		    comment,
-		    "\n\n".join(siblings) if siblings  else 'No siblings cables at this time.'
+		    comment
 	    )
 	});
      
@@ -1032,11 +1030,15 @@ def enable_cable(cid, comment):
 	    ));
 
  	if row['ticket'] and not DISABLE_TICKETS:
-	    EV.add_resolver_comment(row['ticket'], 'Cable %s enabled.' % (row['flabel']))
+	    EV.add_resolver_comment(row['ticket'], 'Cable %s enabled:\n%s' % (row['flabel'],comment))
 	    vlog(3, 'Update Extraview Ticket %s for c%s was enabled' % (row['ticket'], cid))
  
 def disable_cable(cid, comment):
     """ disable cable """
+
+    if not DISABLE_BISECT_DETECT and detect_bisect_cable(cid):
+	vlog(1, 'Refusing to disable cable c%s as it will cause a network bisection' % (cid))
+	return False
 
     SQL.execute('''
 	SELECT 
@@ -1055,9 +1057,7 @@ def disable_cable(cid, comment):
     ))
 
     for row in SQL.fetchall():
-	if row['state'] == 'sibling':
-	    vlog(1, 'disabling sibling cable c%s.' % (cid))
-	elif row['state'] == 'disabled':
+	if row['state'] == 'disabled':
  	    vlog(1, 'cable already disabled. ignoring request to disable c%s again.' % (cid))
 	    return                    
  	elif row['state'] == 'watch':
@@ -1066,24 +1066,24 @@ def disable_cable(cid, comment):
 
 	vlog(3, 'disabling cable c%s.' % (cid))
 
- 	if row['state'] != 'sibling': 
-	    SQL.execute('''
-		UPDATE
-		    cables 
-		SET
-		    state = 'disabled',
-		    comment = ?
-		WHERE
-		    cid = ?
-		;''', (
-		    comment,
-		    cid
-	    ));
+	SQL.execute('''
+	    UPDATE
+		cables 
+	    SET
+		state = 'disabled',
+		online = 0,
+		comment = ?
+	    WHERE
+		cid = ?
+	    ;''', (
+		comment,
+		cid
+	));
 
 	disable_cable_ports(cid)
 
 	if row['ticket'] and not DISABLE_TICKETS:
-	    EV.add_resolver_comment(row['ticket'], 'Cable %s disabled.' % (row['flabel']))
+	    EV.add_resolver_comment(row['ticket'], 'Cable %s disabled:\n%s' % (row['flabel'], comment))
 	    vlog(3, 'Update Extraview Ticket %s for c%s was disabled' % (row['ticket'], cid))
 
 def release_cable(cid, comment, full = False):
@@ -1091,7 +1091,6 @@ def release_cable(cid, comment, full = False):
 
     ticket = None
     flabel = None
-    sibling = None
 
     SQL.execute('''
 	SELECT 
@@ -1100,7 +1099,6 @@ def release_cable(cid, comment, full = False):
 	    cables.suspected,
 	    cables.ticket,
 	    cables.flabel as flabel,
-	    cables.sibling as sibling,
 	    cp1.guid as cp1_guid,
 	    cp1.port as cp1_port,
  	    cp2.guid as cp2_guid,
@@ -1142,8 +1140,7 @@ def release_cable(cid, comment, full = False):
 		state = 'watch',
 		comment = ?,
 		suspected = ?,
-		ticket = ?,
-		sibling = NULL
+		ticket = ?
 	    WHERE
 		cid = ?
 	    ;''', (
@@ -1155,55 +1152,10 @@ def release_cable(cid, comment, full = False):
 
 	ticket = row['ticket']
 	flabel = row['flabel']
-	sibling = row['sibling']
-
-    #get list of siblings and their tickets
-    SQL.execute('''
-	SELECT 
-	    cid,
-	    ticket,
-	    flabel
-	FROM 
-	    cables
-	WHERE
-	    sibling = ?
-    ''',(
-	cid,
-    ))       
-
-    for row in SQL.fetchall():
-	vlog(3, 'release sibling cable c%s of c%s' % (row['cid'], cid))
-	release_cable(row['cid'], 'Releasing sibling of %s' % (flabel))
-
-	if ticket and not DISABLE_TICKETS:
-	    EV.add_resolver_comment(ticket, 'Sibling cable %s enabled and released.' % row['flabel'])
-
-    #get siblings ticket and tell them sibling was released
-    if sibling:
-	SQL.execute('''
-	    SELECT 
-		cid,
-		ticket,
-		flabel
-	    FROM 
-		cables
-	    WHERE
-		cid = ?
-	''',(
-	    sibling,
-	))       
-
-	for row in SQL.fetchall():
-	    vlog(3, 'notify cable c%s of sibling release of c%s' % (sibling, cid))
-
-	    if row['ticket'] and not DISABLE_TICKETS:
-		EV.add_resolver_comment(row['ticket'], 'Sibling cable %s enabled and released.' % (flabel))
-		vlog(3, 'Update Extraview Ticket %s for c%s that c%s was released' % (row['ticket'], sibling, cid))
 
     if ticket and not DISABLE_TICKETS:
 	EV.close(ticket, 'Released Bad Cable\nBad Cable Comment:\n%s' % comment)
 	vlog(3, 'Closed Extraview Ticket %s for c%s' % (ticket, cid))
-
 
 def list_state(what, list_filter):
     """ dump state to user """
@@ -1239,8 +1191,7 @@ def list_state(what, list_filter):
 		    ( 
 			? IS NULL and
 			state != 'watch' and
-			state != 'removed' and
-			sibling IS NULL
+			state != 'removed'
 		    ) or cid = ? 
 		ORDER BY 
 		    ctime 
@@ -1297,10 +1248,9 @@ def list_state(what, list_filter):
 		print ' '
 
     elif what == 'cables' or what == 'cable':
-        f='{0:<10}{1:<10}{2:10}{3:<12}{4:<15}{5:<15}{6:<15}{7:<15}{8:<15}{9:<15}{10:<50}{11:<50}{12:<50}'
+        f='{0:<10}{1:10}{2:<12}{3:<15}{4:<15}{5:<15}{6:<15}{7:<15}{8:<15}{9:<50}{10:<50}{11:<50}'
  	print f.format(
 		"cable_id",
-		"sibling",
 		"state",
 		"Suspected#",
 		"Ticket",
@@ -1317,7 +1267,6 @@ def list_state(what, list_filter):
 	    SQL.execute('''
 		SELECT 
 		    cables.cid as cid,
-		    cables.sibling as scid,
 		    cables.ctime as ctime,
 		    cables.mtime as mtime,
 		    cables.length as length,
@@ -1356,7 +1305,6 @@ def list_state(what, list_filter):
 	    for row in SQL.fetchall():
 		print f.format(
 			'c%s' % (row['cid']),
-			'c%s' % (row['scid']) if row['scid'] else None,
 			row['state'],
 			row['suspected'],
 			't%s' % (row['ticket']) if row['ticket'] else None,
@@ -1463,6 +1411,129 @@ def list_state(what, list_filter):
     else:
 	vlog(1, 'unknown list %s request' % (list_filter))
 
+
+def mark_replaced_cable(cid, new_cid, comment):
+    """ Marks cable as replaced by new cable """
+    vlog(5, 'Mark replaced cable cid=%s new_cid=%s' % (cid, new_cid))
+
+    if cid == new_cid:
+	return
+
+    #find the cable details of the old cable
+    SQL.execute('''
+        SELECT 
+            cid,
+            SN,
+            PN,
+	    length,
+	    ticket,
+	    flabel
+        FROM 
+            cables
+    
+        WHERE
+            cid != ? 
+        LIMIT 1
+    ''',(
+        cid,
+    ))
+    
+    old_SN = None
+    old_PN = None
+    old_length = None
+    old_ticket = None
+    old_flabel = None
+    for row in SQL.fetchall():
+	old_SN = row['SN']
+	old_PN = row['PN']
+	old_length = row['length']
+	old_ticket = row['ticket']
+	old_flabel = row['flabel']
+
+    #find the new cable details
+    SQL.execute('''
+        SELECT 
+            cid,
+            SN,
+            PN,
+	    length,
+	    ticket,
+	    flabel
+        FROM 
+            cables
+    
+        WHERE
+            cid != ? 
+        LIMIT 1
+    ''',(
+        new_cid,
+    ))
+    
+    new_SN = None
+    new_PN = None
+    new_length = None
+    new_ticket = None
+    new_flabel = None
+    for row in SQL.fetchall():
+	new_SN = row['SN']
+	new_PN = row['PN']
+	new_length = row['length']
+	new_ticket = row['ticket']
+	new_flabel = row['flabel'] 
+
+    vlog(3, 'Replacing c%s with cable c%s' % (cid, new_cid))
+    if old_ticket:
+	if not DISABLE_TICKETS:
+            vlog(4, 'Updated Ticket %s for c%s for replacement cable %s' % (old_ticket, cid, new_cid))
+	    EV.add_resolver_comment(old_ticket, '''
+		This cable has been replaced by a new cable:
+
+		%s
+
+		New Cable:
+		%s
+		Length: %s
+		Serial: %s
+		Product Number: %s
+
+		Replaced Cable:
+		%s
+		Length: %s
+		Serial: %s
+		Product Number: %s
+		
+	    ''' % (
+		    comment,
+		    new_flabel,
+		    new_length if new_length else 'Unknown',
+		    new_SN if new_SN else 'Unknown',
+		    new_PN if new_PN else 'Unknown',
+		    old_flabel,
+		    old_length if old_length else 'Unknown',
+		    old_SN if old_SN else 'Unknown',
+		    old_PN if old_PN else 'Unknown'
+		)
+	    ); 
+
+	if not new_ticket:
+	    vlog(3, 'assigned Ticket %s for c%s to replacement cable %s' % (old_ticket, cid, new_cid))
+	    #assign old ticket to new cable if it doesn't have one already
+	    SQL.execute('''
+		UPDATE
+		    cables 
+		SET
+		    ticket = ?
+		WHERE
+		    cid = ?
+		;''', (
+		    new_cid,
+		    old_ticket
+	    ));
+	else:
+	    vlog(3, 'replacement cable c%s already has ticket t%s assigned' % (new_cid, new_ticket))
+
+    remove_cable(cid, comment, False) 
+
 def convert_guid_intstr(guid):
     """ normalise representation of guid to string of an integer 
 	since sqlite cant handle 64bit ints """
@@ -1479,8 +1550,10 @@ def run_parse(dump_dir):
 	else:
 	    return None if not key in port else str(port[key])
     
-    def find_cable(port1, port2):
-	""" Find (and update) cable in db 
+    def find_cables(port1, port2):
+	""" Find any cable in db that match guid/port pairs 
+	Warning: this may find crossed cables into existing ports
+	Warning: will not find any removed cables
 	port1: ib_diagnostics formatted port
 	port2: ib_diagnostics formatted port
 	"""
@@ -1493,25 +1566,27 @@ def run_parse(dump_dir):
 	if port2 and int(port1['guid'], 16) > int(port2['guid'], 16):
 	    #always order the ports by largest gid as port 2
 	    #order doesnt matter as long as it is stable
-	    port_tmp = port2
-	    port2 = port1
-	    port1 = port_tmp
+            port1, port2 = port2, port1
 
 	if not port1:
+	    vlog(1, 'Error: attempt to find cable no ports? %s %s' % (port1, port2))
 	    return None
 
-	#Attempt to find the newest cable by guid/port/SN
+	#Attempt to find the any matching cable by the ports
 	SQL.execute('''
 	    SELECT 
 		cables.cid as cid,
-		max(cp1.hca, cp2.hca) as hca
-	    from 
-		cables
+		max(cp1.hca, cp2.hca) as has_hca,
+		cables.SN as SN,
+		cables.PN as PN,
+		cables.state as state
 
+	    FROM 
+		cables
+	
 	    INNER JOIN
 		cable_ports as cp1
 	    ON
-		( ? IS NULL or cables.SN = ? ) and
 		cables.cid = cp1.cid and
 		cp1.guid = ? and
 		cp1.port = ?
@@ -1524,10 +1599,11 @@ def run_parse(dump_dir):
 		cp2.guid = ? and
 		cp2.port = ?    
 
+	    WHERE
+		cables.state != 'removed'
+
 	    ORDER BY cables.ctime DESC
-	    LIMIT 1
 	''',(
-	    gv(port1, 'SN'), gv(port1, 'SN'),
 	    convert_guid_intstr(port1['guid']),
 	    int(port1['port']),
 	    '1' if port2 else None,
@@ -1535,12 +1611,16 @@ def run_parse(dump_dir):
 	    int(port2['port']) if port2 else None,
 	))
 
-	rows = SQL.fetchall()
-	if len(rows) > 0:
-	    #exact cable found
-	    return {'cid': rows[0]['cid'], 'hca': rows[0]['hca']}
-	else:
-	    return None
+	cables = []
+	for row in SQL.fetchall():
+	    cables.append({ 
+		    'cid': int(row['cid']),
+		    'has_hca': True if row['has_hca'] == 1 else False,
+		    'SN': row['SN'],
+		    'PN': row['PN']
+	    })
+
+	return cables
 
     def insert_cable(port1, port2, timestamp):
 	""" insert new cable into db """
@@ -1603,52 +1683,7 @@ def run_parse(dump_dir):
 	vlog(5, 'create cable(%s) %s <--> %s' % (cid, ib_diagnostics.port_pretty(port1),ib_diagnostics.port_pretty(port2)))
 	return cid
 
-    def check_replaced_cable(cid, SN, PN):
-	""" check if new cable was a cable replacement """
 
-	#find if this cable already existed but with a different field (SN or PN)
-	SQL.execute('''
-	    SELECT 
-		cid,
-		SN,
-		PN,
-		ctime,
-		state
-
-	    FROM 
-		cables
-
-	    WHERE
-		cid != ? and
-		SN = ? and
-		PN = ? and
-		state != 'removed'
-
-	    ORDER BY ctime DESC
-	    LIMIT 1
-	''',(
-	    cid,
-	    SN,
-	    PN
-	))
-
-	for row in SQL.fetchall():
-	    what = 'detected cable SN/PN change c%s and c%s from %s/%s to %s/%s' % (
-		cid, 
-		row['cid'],
-		row['SN'],
-		row['PN'],
-		SN, 
-		PN
-	    )
-
-	    if row['state'] == 'disabled' or row['state'] == 'suspect':
-		#cable was probably replaced on purpose
-		#mark old cable as removed
-		remove_cable(row['cid'], what)
-	    elif row['state'] == 'sibling':
-		#ignore new SN since it will likely be reversed
-		comment_cable(cid, what)  
  
     #ports from ib_diagnostics should not leave this function
     ports = []
@@ -1691,23 +1726,60 @@ def run_parse(dump_dir):
     #add every known cable to database
     #slow but keeps sane list of all cables forever for issue tracking
     known_cables=[] #track every that is found
-    new_cables=[] #track every that is created
     hca_cables=[] #track every that has an hca
     for port in ports:
 	port1 = port
 	port2 = port['connection']
 	cid = None
 	hca_found = None
-	retc = find_cable(port1, port2)
+	replaced_cables=[]
+	cables = find_cables(port1, port2)
+        #If the current existing cable has a SN/PN, then favor the cable that matches
+        if gv(port1, 'SN') and gv(port1, 'PN'):
+            for cable in cables:
+                if cable['SN'] == gv(port1, 'SN') and cable['PN'] == gv(port1, 'PN'):
+                    cid = cable['cid']
+                    hca_found = cable['has_hca']
+                    vlog(5, 'Found matching cable c%s' % (cid))
+                else: #found old cable w/ different SN/PN
+                    replaced_cables.append(cable['cid'])
+                    vlog(5, 'Found replaced cable c%s' % (cable['cid']))
+        else: 
+            #if the detected live cable lacks a SN/PN, favor the cable that has one
+            #ignore any replacements since current cable is unplugged or half-dead
+            cid_nosn = None
+            cid_nosn_hca_fiound = None
+	    for cable in cables:
+                if cable['SN'] and cable['PN']:
+                    cid = cable['cid']
+                    hca_found = cable['has_hca']
+                    vlog(5, 'Found matching cable c%s with serial: %s product: %s' % (cid,cable['SN'],cable['PN']))
+                    break
+                else:
+                    #record first cable found if no SN/PN are found
+                    if not cid_nosn:
+                        cid_nosn = cable['cid']
+                        cid_nosn_hca_fiound = cable['has_hca']
 
-	if not retc:
-	    #create the cable
+            if cid is None and cid_nosn:
+                #unable to find a cable with a SN/PN, just take first cable found
+                cid = cid_nosn 
+                hca_found  = cid_nosn_hca_fiound  
+                vlog(5, 'Found matching cable c%s without serial' % (cid))
+	
+	if cid is None: #create the cable
+	    vlog(5, 'Unable to find matching cable. Creating new cable')
 	    cid = insert_cable(port1, port2, timestamp)
-	    new_cables.append({ 'cid': cid, 'port1': port1, 'port2': port2})
-	    hca_found = port1['type'] == "CA" or (port2 and port2['type'] == "CA")
-	else:
-	    cid = retc['cid']
-	    hca_found = retc['hca']
+	    hca_found = port1['type'] == "CA" or (port2 and port2['type'] == "CA") 
+
+	#mark all the replaced cables (hope its not more than one...)
+	if replaced_cables:
+	    for rcid in replaced_cables:
+		mark_replaced_cable(
+		    rcid, 
+		    cid, 
+		    'Detected new cable c%s in same physical location' % (cid)
+		)
 
 	#record cid in each port to avoid relookup
 	port1['cable_id'] = cid
@@ -1718,37 +1790,48 @@ def run_parse(dump_dir):
 	if hca_found:
 	    hca_cables.append(cid)
 
-    #check new cables (outside of begin/commit)
-    for cable in new_cables:
-	cid = cable['cid']
-	port1 = cable['port1']
-	port2 = cable['port2']
-
-	#find if this cable already existed but with a different field (SN or PN)
-	if gv(port, 'SN') and gv(port, 'PN'):
-	    check_replaced_cable(cid, gv(port, 'SN'), gv(port, 'PN'))
-
     #Find any cables that are known but not parsed this time around (aka went dark)
     #ignore any cables in a disabled state
     missing_cables = []
-    #find all cables marked as sibling
-    sibling_cables = {} #sibling cable -> bad cable
     SQL.execute('''
 	    SELECT 
 		cid,
-		state,
-		sibling
+		state
 	    FROM 
 		cables
-	    WHERE
-		state != 'removed' and
-		state != 'disabled'
 	''')
     for row in SQL.fetchall():
-	if row['state'] == 'sibling':
-	    sibling_cables[int(row['cid'])] = int(row['sibling'])
-	elif not row['cid'] in known_cables:
-	    missing_cables.append(int(row['cid']))
+	if row['cid'] in known_cables:
+	    #cable found, mark it online and when
+ 	    SQL.execute('''
+		UPDATE
+		    cables 
+		SET
+		    online = 1,
+		    onlineTime = ?
+		WHERE
+		    cid = ?
+		;''', (
+		    int(timestamp),
+		    row['cid']
+	    ));
+ 
+	else: #cable not found
+	    if not row['state'] in ['removed', 'disabled']:
+		#only note cables if they should not be missing
+		missing_cables.append(int(row['cid']))
+
+	    #Mark cable offline
+	    SQL.execute('''
+		UPDATE
+		    cables 
+		SET
+		    online = 0
+		WHERE
+		    cid = ?
+		;''', (
+		    row['cid'],
+	    ));
 
     for cid in missing_cables:
 	#Verify missing cables actually matter: ignore single port cables (aka unconnected)
@@ -1802,11 +1885,6 @@ def run_parse(dump_dir):
 	    if iport and 'cable_id' in iport:
 		cid = iport['cable_id']
  
-	#put blame from sibling on the marked bad cable
-	if cid in sibling_cables:
-	    vlog(3, 'blaming c%s instead of %s' % (cid, sibling_cables[cid]))
-	    cid = sibling_cables[cid]
-
  	if issue['type'] == 'missing' and cid in hca_cables:
 	    vlog(3, 'ignoring missing cable c%s with an hca' % (cid))
 	    continue
@@ -1906,15 +1984,9 @@ def dump_help(full = False):
 		add cable to bad node list 
 		open EV against node in SSG queue or Assign to SSG queue
 
-	sibling:
-	    {0} sibiling 'comment' {{(bad cable id) c#}} {{cables}}+ 
-	    {0} donor 'comment' {{(bad cable id) c#}} {{cables}}+ 
-		mark cable as sibling to bad cable if sibling is in watch state
-		disables sibling cable in fabric
-
 	disable: {0} disable 'comment' {{cables}}+ 
 	    disables cable in fabric
-	    add cable to bad cable list (if not one already) unless cable is sibling
+	    add cable to bad cable list (if not one already)
 
 	enable: {0} enable 'comment' {{cables}}+ 
 	    enables cable in fabric
@@ -1933,8 +2005,6 @@ def dump_help(full = False):
 		enable cable in fabric
 		set cable state to watch
 		close Extraview ticket
-		release any sibling cables
-		release sibling status of cable (don't consider cable as sibling anymore)
 
 	rejuvenate: {0} rejuvenate {{comment}} {{cables}}+ 
 	    Note: only use this if the cable has been replaced and it was not autodetected
@@ -1977,7 +2047,7 @@ def dump_help(full = False):
 	    guid/port pairs: S{{guid}}/P{{port}}
 	    label: cable port label
 	    port id: p#
-	    states: @watch, @suspect, @disabled, @sibling, @removed
+	    states: @watch, @suspect, @disabled, @removed, @online, @offline
 
 	Optional Environment Variables:
 	    VERBOSE={{1-5 default=3}}
@@ -1987,6 +2057,14 @@ def dump_help(full = False):
 	    DISABLE_TICKETS={{YES|NO default=NO}}
 		YES: disable creating and updating tickets (may cause extra errors)
 		NO: create tickets
+
+	    DISABLE_BISECT_DETECT={{YES|NO default=NO}} 
+		YES: Bisection detection will be disabled
+		NO: Detect network bisection and refuse commands that will cause a network bisection
+
+ 	    DISABLE_PORT_STATE_CHANGE={{YES|NO default=NO}} 
+		YES: Disable all port state change commands
+		NO: Disable and and enable ports as commanded
 
 	    BAD_CABLE_DB={{path to sqlite db defailt=/etc/ncar_bad_cable_list.sqlite}}
 		Warning: will autocreate if non-existant or empty
@@ -2026,18 +2104,30 @@ if not cluster_info.is_mgr():
 BAD_CABLE_DB='/etc/ncar_bad_cable_list.sqlite'
 """ const string: Path to JSON database for bad cable list """
 
+DISABLE_PORT_STATE_CHANGE=False
+DISABLE_BISECT_DETECT=False
 DISABLE_TICKETS=False
 EV = None
+syslog.openlog('bcl.py')
 
 if 'BAD_CABLE_DB' in os.environ and os.environ['BAD_CABLE_DB']:
     BAD_CABLE_DB=os.environ['BAD_CABLE_DB']
+    syslog.openlog('bcl.py::override')
     vlog(1, 'Database: %s' % (BAD_CABLE_DB))
 
 if 'DISABLE_TICKETS' in os.environ and os.environ['DISABLE_TICKETS'] == "YES":
     DISABLE_TICKETS=True
-    vlog(1, 'Disabling creating of extraview tickets')
+    vlog(1, 'Warning: Disabling creating of extraview tickets')
 else:
     EV = extraview_cli.open_extraview()
+
+if 'DISABLE_BISECT_DETECT' in os.environ and os.environ['DISABLE_BISECT_DETECT'] == "YES":
+    DISABLE_BISECT_DETECT=True
+    vlog(1, 'Warning: Disabling bisection detection.')
+
+if 'DISABLE_PORT_STATE_CHANGE' in os.environ and os.environ['DISABLE_PORT_STATE_CHANGE'] == "YES":
+    DISABLE_BISECT_DETECT=True
+    vlog(1, 'Warning: Disabling port state changes.') 
 
 initialize_db()
 
@@ -2048,7 +2138,10 @@ if len(argv) < 2:
 else:
     CMD=argv[1].lower()
     if CMD == 'parse':
-	run_parse(argv[2])  
+	run_parse(argv[2])
+    elif CMD == 'bisect':
+	for cid in resolve_cables(argv[2:]):
+	    detect_bisect_cable(cid)  
     elif len(argv) < 3:
 	if CMD == 'help':
 	    dump_help(True)  
@@ -2100,12 +2193,7 @@ else:
 	elif CMD == 'comment':
 	    for cid in resolve_cables(argv[3:]):
 		comment_cable(cid, argv[2]) 
-	elif CMD == 'sibling' or CMD == 'donor':
-	    source_cid = resolve_cable(argv[3]) 
-	    if source_cid:
-		for cid in resolve_cables(argv[4:]):
-		    add_sibling(cid, source_cid['cid'], argv[2]) 
-	else:
+        else:
 	    dump_help() 
 
 release_db()
