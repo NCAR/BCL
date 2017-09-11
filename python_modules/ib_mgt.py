@@ -9,8 +9,38 @@ import cluster_info
 import re
 import os
 
-def exec_opensm_to_string ( cmd, primary_only = False ):
+def pull_opensm_files ( local_path, remote_path ):
+    """ Pulls files in remote_path from openSM host to local_path on localhost"""
+    SM = NodeSet.fromlist(cluster_info.get_sm()[0:1])
+
+    vlog(3, 'Pulling %s from OpenSM %s to local path %s' % (remote_path, SM, local_path))
+
+    task = task_self()
+
+    if type(remote_path) is list:
+        for rp in remote_path:
+            vlog(3, 'Pulling %s from OpenSM %s to local path %s' % (rp, SM, local_path))
+            task.rcopy(rp, local_path, SM, timeout=120, stderr=True,  preserve=True )
+    else:
+        vlog(3, 'Pulling %s from OpenSM %s to local path %s' % (remote_path, SM, local_path))
+        task.rcopy(remote_path, local_path, SM, timeout=120, stderr=True,  preserve=True )
+
+    task.resume()
+
+    for buffer, nodelist in task.iter_errors():
+	n = str(NodeSet.fromlist(nodelist))
+        vlog(2, 'Error: Node=%s %s' % (n, str(buffer)))
+
+    vlog(5, 'Pull complete ret=%s ' % (task.max_retcode()))
+
+
+def exec_opensm_to_string ( cmd, primary_only = False, timeout = 300  ):
     """ Runs cmd on openSM host and places Return Value, STDOUT, STDERR into returned list  """
+    vlog(5, 'start exec_opensm_to_string cmd=%s primary_only=%s' % (
+	[cmd],
+	primary_only
+    ))
+
     SM = None
 
     if primary_only:
@@ -25,7 +55,8 @@ def exec_opensm_to_string ( cmd, primary_only = False ):
     task.run(
 	cmd,
 	nodes=SM, 
-	timeout=300
+	timeout=int(timeout),
+        #stderr=True
     )
 
     for buffer, nodelist in task.iter_buffers():
@@ -36,9 +67,8 @@ def exec_opensm_to_string ( cmd, primary_only = False ):
 
 	output[n].append(str(buffer))
 
-    vlog(5, 'exec_opensm_to_string cmd=%s primary_only=%s ret=%s' % (
+    vlog(5, 'finish exec_opensm_to_string cmd=%s ret=%s' % (
 	[cmd],
-	primary_only,
 	task.max_retcode()
     ))
 
@@ -47,13 +77,15 @@ def exec_opensm_to_string ( cmd, primary_only = False ):
 
     return {'output': output, 'max_retcode': task.max_retcode()}
 
-def exec_opensm_to_file ( cmd, output_file ):
+def exec_opensm_to_file ( cmd, output_file, timeout = 300 ):
     """ Runs cmd on openSM host and pipes STDOUT to output_file """
 
-    output = exec_opensm_to_string( cmd, True )
+    ret = exec_opensm_to_string( cmd, True, timeout )
 
-    if not output:
+    if not ret or not 'output' in ret:
         return None
+
+    output = ret['output']
 
     for node, out in output.iteritems():
 	return nfile.write_file(output_file, "\n".join(out))
