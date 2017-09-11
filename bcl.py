@@ -1554,10 +1554,6 @@ def run_parse(dump_dir):
     """ Run parse mode against a dump directory """
     global EV, SQL
 
-    #disabled for now
-    if not DISABLE_TICKETS:
-        return
-
     def gv(port, key):
 	""" get value or none """
 	if not port:
