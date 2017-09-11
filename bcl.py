@@ -1414,7 +1414,7 @@ def list_state(what, list_filter):
 
 def mark_replaced_cable(cid, new_cid, comment):
     """ Marks cable as replaced by new cable """
-    vlog(5, 'Mark replaced cable cid=%s new_cid=%s' % (cid, new_cid))
+    vlog(5, 'Mark replaced cable old_cid=%s new_cid=%s' % (cid, new_cid))
 
     if cid == new_cid:
 	return
@@ -1554,6 +1554,10 @@ def run_parse(dump_dir):
     """ Run parse mode against a dump directory """
     global EV, SQL
 
+    #disabled for now
+    if not DISABLE_TICKETS:
+        return
+
     def gv(port, key):
 	""" get value or none """
 	if not port:
@@ -1625,7 +1629,8 @@ def run_parse(dump_dir):
 
 	cables = []
 	for row in SQL.fetchall():
-            if row['cid'] > 0:
+            cid = int(row['cid'])
+            if not cid is None and cid > 0:
                 cables.append({ 
                         'cid': row['cid'],
                         'has_hca': True if row['has_hca'] == 1 else False,
@@ -1633,7 +1638,7 @@ def run_parse(dump_dir):
                         'PN': row['PN']
                 })
             else:
-                vlog(4, 'Unexpected invalid cable c%s: %s' % ( row['cid'], row))
+                vlog(4, 'Unexpected invalid cable c%s: %s' % (cid, row))
 
 	return cables
 
@@ -1767,7 +1772,7 @@ def run_parse(dump_dir):
                             hca_found = cable['has_hca']
                             vlog(5, 'Found matching cable c%s' % (cid))
                     else:
-                        vlog(5, 'Non-matching cable c%s rejected SN=%s PN=%s' % (cid,cable['SN'],cable['PN']))
+                        vlog(5, 'Non-matching cable c%s rejected SN=%s PN=%s' % (cable['cid'],cable['SN'],cable['PN']))
 
             #mark all other cables as replaced
             if cid:
@@ -1791,9 +1796,9 @@ def run_parse(dump_dir):
                     else:
                         #record newest cable found if no SN/PN are found
                         if cid_nosn is None or cable['cid'] > cid_nosn:
-                            vlog(5, 'Found matching cable c%s without serial' % (cid))
                             cid_nosn = cable['cid']
                             cid_nosn_hca_found = cable['has_hca']
+                            vlog(5, 'Found matching cable c%s without serial' % (cid_nosn))
 
             if cid is None and cid_nosn:
                 #unable to find a cable with a SN/PN, just take first cable found
