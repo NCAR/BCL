@@ -34,12 +34,15 @@ def pull_opensm_files ( local_path, remote_path ):
     vlog(5, 'Pull complete ret=%s ' % (task.max_retcode()))
 
     #TODO: make clush not mangle the names
-    if type(remote_path) is list:
-        for rp in remote_path:
-            os.rename('%s.%s' % (rp, SM), rp)
-    else:
-        os.rename('%s.%s' % (rp, SM), remote_path)
+    if not type(remote_path) is list:
+        remote_path = [remote_path]
 
+    for rp in remote_path:
+        np=os.path.join(local_path, os.path.basename(rp))
+        mp=os.path.join(local_path, '%s.%s' % (os.path.basename(rp), SM))
+        vlog(6, 'Unmangling %s -> %s' % (mp, np))
+        os.rename(mp, np)
+    
 def exec_opensm_to_string ( cmd, primary_only = False, timeout = 300  ):
     """ Runs cmd on openSM host and places Return Value, STDOUT, STDERR into returned list  """
     vlog(5, 'start exec_opensm_to_string cmd=%s primary_only=%s' % (
