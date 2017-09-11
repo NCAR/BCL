@@ -5,7 +5,7 @@ from nlog import vlog,die_now
 def init(database_path):
     """ Attempt to open a SQLite database and returns the connection and cursor """
     try:
-	SQL_CONNECTION = sqlite3.connect(database_path, isolation_level=None)
+	SQL_CONNECTION = sqlite3.connect(database_path, isolation_level=None, timeout=600)
 	SQL_CONNECTION.row_factory = sqlite3.Row
 	SQL = SQL_CONNECTION.cursor()
 	return (SQL_CONNECTION, SQL)
