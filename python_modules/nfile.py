@@ -24,15 +24,15 @@ def exec_to_file ( cmd, output_file, cwd = '/tmp/' ):
 
     try:
         with open(output_file, 'w') as fo:
-            vlog(4, 'Running command: %s > %s '% (cmd, output_file))
+            vlog(4, 'Running command: %s > %s from %s '% (cmd, output_file, cwd))
             with subprocess.Popen(cmd, stdout=fo, cwd=cwd) as p:
                 p.wait()
                 fo.flush()
                 fo.close()
                 return p.returncode
 
-    except:
-        pass
+    except Exception as e:
+        vlog(1, 'Command Error: %s'% (str(e)))
 
     vlog(1, 'Failed to run command: %s > %s '% (cmd, output_file))
     return None
