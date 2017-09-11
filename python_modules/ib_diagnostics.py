@@ -160,7 +160,7 @@ def parse_port ( label ):
 		leaf = match.group('leaf')
 		port = match.group('port')
 	    else:
-		vlog(5, 'unable to parse: %s' % (label))
+		vlog(6, 'unable to parse: %s' % (label))
 		name = label
 
     return {
@@ -397,10 +397,10 @@ def parse_sgi_ibcv2 ( ports, issues, contents ):
         sgi_cluster.physical_to_logical_dict(p)
 	vlog(4, 'parse %s -> %s' % (label, sgi_cluster.print_label(p, 'simple')))
  	
-	if p:        
+        if p and 'port' in p and not p['port'] is None:        
 	    return resolve_port(ports, {
 		'name': sgi_cluster.print_label(p, 'firmware_name'),
-                'port': int(p['port']) if 'port' in p and not p['port'] is None else None,
+                'port': int(p['port']),
 		'hca': None,
 		'spine': None,
 		'leaf': None
@@ -416,11 +416,14 @@ def parse_sgi_ibcv2 ( ports, issues, contents ):
     #print "MISCABLE:\n";
     #printf "\tFOUND:    %s <---> %s\n", $phy_sact, $phy_dact;
     #printf "\tEXPECTED: $phy_sexp <---> $phy_dexp\n";
+    #NOT FOUND: r2i2s2 INTERNAL port 12 to 12
     for match in re.finditer(r"""
 	\s*
 	(
 	    ERROR:\s*(?P<error>.+)
 	    |
+	    NOT\ FOUND:\s*(?P<missingi>\S+)\s*INTERNAL\ port\ (?P<missingip1>\d+)\ to\ (?P<missingip2>\d+)
+            |
 	    NOT\ FOUND:\s*(?P<missing1>\S+)\s*(?P<missing2>\S+|)
 	    |
 	    FOUND:\s*(?P<found1>\S+)\s*<-*>\s*(?P<found2>\S+)
@@ -431,12 +434,23 @@ def parse_sgi_ibcv2 ( ports, issues, contents ):
 	if match.group('error'):
 	    vlog(5, 'unknown error: %s' % match.group('error'))
             issues.append({ 
-		'type': 'disabled_port',
+		'type': 'unknown',
 		'ports': [],
-		'issue': 'Port Physical State Disabled',
-		'raw': None,
-		'source': 'ibdiagnet2'
+		'issue': 'Unknown Error detected',
+		'raw': match.group(1),
+		'source': 'sgi ibcv2'
 	    })        
+	elif match.group('missingi'): 
+            p1 = '%sc0.%s' % (match.group('missingi'), match.group('missingip1'))
+            p2 = '%sc1.%s' % (match.group('missingi'), match.group('missingip2'))
+	    vlog(5, 'missing internal cable: %s <--> %s' % (p1, p2))
+            issues.append({ 
+		'type': 'missing',
+		'ports': [parse(p1), parse(p2)],
+		'issue': 'Missing cable',
+		'raw': match.group(1),
+		'source': 'sgi ibcv2'
+	    })   
 	elif match.group('missing1'): 
 	    vlog(5, 'missing cable: %s <--> %s' % (match.group('missing1'), match.group('missing2')))
             issues.append({ 
