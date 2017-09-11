@@ -23,12 +23,20 @@ def exec_to_file ( cmd, output_file, cwd = '/tmp/' ):
     """ Runs cmd and pipes STDOUT to output_file """
 
     try:
+        dn = open(os.devnull, 'r')
         with open(output_file, 'w') as fo:
             vlog(4, 'Running command: %s > %s from %s '% (cmd, output_file, cwd))
-            with subprocess.Popen(cmd, stdout=fo, cwd=cwd) as p:
+            p = subprocess.Popen(
+                    cmd, 
+                    stdin=dn,
+                    stdout=fo, 
+                    stderr=fo, 
+                    cwd=cwd, 
+                    close_fds=True
+                )
+
+            if p:
                 p.wait()
-                fo.flush()
-                fo.close()
                 return p.returncode
 
     except Exception as e:
