@@ -550,7 +550,7 @@ def parse_ibdiagnet ( ports, issues, contents ):
 
 		       if (
 			       str(cmatch.group('counter')) in [ 
-				   #ignored counters in general
+				   #ignored congestion counters  in general
 				   'port_rcv_switch_relay_errors', 
 				   'port_xmit_discard' 
 			       ] or
@@ -558,9 +558,13 @@ def parse_ibdiagnet ( ports, issues, contents ):
 				   cmatch.group('counter') == 'link_down_counter' and
 				   port and port['type'] == "CA"
 			       )  or
-			       ( #ignore small numbers of symbol errors
+			       ( #ignore small numbers of corruption errors
 				   str(cmatch.group('counter')) in [ 'port_rcv_errors', 'symbol_error_counter', 'port_rcv_remote_physical_errors', 'vl15_dropped' ] and
 				   int(cmatch.group('value')) < 15
+			       )   or
+			       ( #ignore small numbers of control errors
+				   str(cmatch.group('counter')) in [ 'vl15_dropped' ] and
+				   int(cmatch.group('value')) < 100
 			       )  
 
 			  ):
