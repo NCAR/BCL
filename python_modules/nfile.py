@@ -19,15 +19,20 @@ def write_file ( file_name, contents ):
     with open(file_name, 'w') as file:
 	file.write(contents)
 
-def exec_to_file ( cmd, output_file ):
+def exec_to_file ( cmd, output_file, cwd = '/tmp/' ):
     """ Runs cmd and pipes STDOUT to output_file """
-    with open(output_file, 'w') as fo:
-	vlog(4, 'Running command: %s > %s '% (cmd, output_file))
-	with subprocess.Popen(cmd, stdout=fo, cwd='/tmp/') as p:
-	    p.wait()
-	    fo.flush()
-	    fo.close()
-	    return p.returncode
+
+    try:
+        with open(output_file, 'w') as fo:
+            vlog(4, 'Running command: %s > %s '% (cmd, output_file))
+            with subprocess.Popen(cmd, stdout=fo, cwd=cwd) as p:
+                p.wait()
+                fo.flush()
+                fo.close()
+                return p.returncode
+
+    except:
+        pass
 
     vlog(1, 'Failed to run command: %s > %s '% (cmd, output_file))
     return None
@@ -53,9 +58,9 @@ def exec_to_string ( cmd, cwd='/tmp/' ):
     vlog(1, 'Command %s failed' % cmd)
 
 #https://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
-def mkdir_p(path):
+def mkdir_p(path, mode = 0755):
     try:
-        os.makedirs(path)
+        os.makedirs(path, mode)
     except OSError as exc:  # Python >2.5
         if exc.errno == errno.EEXIST and os.path.isdir(path):
             pass
