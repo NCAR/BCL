@@ -33,6 +33,12 @@ def pull_opensm_files ( local_path, remote_path ):
 
     vlog(5, 'Pull complete ret=%s ' % (task.max_retcode()))
 
+    #TODO: make clush not mangle the names
+    if type(remote_path) is list:
+        for rp in remote_path:
+            os.rename('%s.%s' % (rp, SM), rp)
+    else:
+        os.rename('%s.%s' % (rp, SM), remote_path)
 
 def exec_opensm_to_string ( cmd, primary_only = False, timeout = 300  ):
     """ Runs cmd on openSM host and places Return Value, STDOUT, STDERR into returned list  """
