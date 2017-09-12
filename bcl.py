@@ -1412,91 +1412,73 @@ def list_state(what, list_filter):
 	vlog(1, 'unknown list %s request' % (list_filter))
 
 
-def mark_replaced_cable(cid, new_cid, comment):
+def mark_replaced_cable(old_cid, new_cid, comment):
     """ Marks cable as replaced by new cable """
-    vlog(5, 'Mark replaced cable old_cid=%s new_cid=%s' % (cid, new_cid))
+    vlog(5, 'Mark replaced cable old_cid=%s new_cid=%s' % (old_cid, new_cid))
 
-    if cid == new_cid:
+    if old_cid == new_cid:
+        vlog(1, 'Refusing to replace cable c%s with itself' % (old_cid))
 	return
 
-    #find the cable details of the old cable
-    SQL.execute('''
-        SELECT 
+    def get_cable_info(cid):
+        SQL.execute('''
+            SELECT 
+                cid,
+                SN,
+                PN,
+                length,
+                ticket,
+                flabel,
+                state
+            FROM 
+                cables
+            WHERE
+                cid = ? 
+            LIMIT 1
+        ''',(
             cid,
-            SN,
-            PN,
-	    length,
-	    ticket,
-	    flabel,
-            state
-        FROM 
-            cables
-    
-        WHERE
-            cid != ? 
-        LIMIT 1
-    ''',(
-        cid,
-    ))
-    
-    old_SN = None
-    old_PN = None
-    old_length = None
-    old_ticket = None
-    old_flabel = None
-    for row in SQL.fetchall():
-	old_SN = row['SN']
-	old_PN = row['PN']
-	old_length = row['length']
-	old_ticket = row['ticket']
-	old_flabel = row['flabel']
+        ))
+        
+        for row in SQL.fetchall():
+            return {
+                'cid': row['cid'],
+                'SN': row['SN'] if row['SN'] else 'Unknown',
+                'PN': row['PN'] if row['PN'] else 'Unknown',
+                'state': row['state'],
+                'length': row['length'] if row['length'] else 'Unknown',
+                'ticket': row['ticket'],
+                'flabel': row['flabel']
+            }
 
-        if row['state'] == 'removed':
-            vlog(2, 'Refusing to replace removed cable c%s' % (cid))
-            return False
+        return None
 
-    #find the new cable details
-    SQL.execute('''
-        SELECT 
-            cid,
-            SN,
-            PN,
-	    length,
-	    ticket,
-	    flabel,
-            state
+    old = get_cable_info(old_cid)
+    new = get_cable_info(new_cid)
 
-        FROM 
-            cables
-    
-        WHERE
-            cid != ? 
-        LIMIT 1
-    ''',(
-        new_cid,
-    ))
-    
-    new_SN = None
-    new_PN = None
-    new_length = None
-    new_ticket = None
-    new_flabel = None
-    for row in SQL.fetchall():
-	new_SN = row['SN']
-	new_PN = row['PN']
-	new_length = row['length']
-	new_ticket = row['ticket']
-	new_flabel = row['flabel'] 
+    #sanity checks
+    if not old:
+        vlog(2, 'Unable to find old cable c%s' % (old_cid))
+        return False
 
-        if row['state'] == 'removed':
-            vlog(2, 'Refusing to replace cable c%s with removed cable c%s' % (cid, new_cid))
-            return False
+    if not new:
+        vlog(2, 'Unable to find new cable c%s' % (new_cid))
+        return False
 
-    vlog(3, 'Replacing c%s with cable c%s' % (cid, new_cid))
-    if old_ticket:
+    if old['state'] == 'removed':
+        vlog(2, 'Refusing to replace removed cable c%s' % (old_cid))
+        return False
+
+    if new['state'] == 'removed':
+        vlog(2, 'Refusing to replace cable c%s with removed cable c%s' % (old_cid, new_cid))
+        return False
+
+    vlog(3, 'Replacing c%s with cable c%s' % (old_cid, new_cid))
+    if not old['ticket']:
+        vlog(4, 'Replaced cable c%s has no ticket.' % (old_cid))
+    else:
 	if not DISABLE_TICKETS:
-            vlog(4, 'Updated Ticket %s for c%s for replacement cable %s' % (old_ticket, cid, new_cid))
-	    EV.add_resolver_comment(old_ticket, '''
+            vlog(4, 'Updated Ticket %s for c%s for replacement cable %s' % (old['ticket'], new_cid, old_cid))
+	    EV.add_resolver_comment(old['ticket'], '''
 		This cable has been replaced by a new cable:
 
 		%s
@@ -1515,19 +1497,19 @@ def mark_replaced_cable(cid, new_cid, comment):
 		
 	    ''' % (
 		    comment,
-		    new_flabel,
-		    new_length if new_length else 'Unknown',
-		    new_SN if new_SN else 'Unknown',
-		    new_PN if new_PN else 'Unknown',
-		    old_flabel,
-		    old_length if old_length else 'Unknown',
-		    old_SN if old_SN else 'Unknown',
-		    old_PN if old_PN else 'Unknown'
+		    new['flabel'],
+		    new['length'],
+		    new['SN'],
+		    new['PN'],
+		    old['flabel'],
+		    old['length'],
+		    old['SN'],
+		    old['PN']
 		)
 	    ); 
 
-	if not new_ticket:
-	    vlog(3, 'assigned Ticket %s for c%s to replacement cable %s' % (old_ticket, cid, new_cid))
+	if not new['ticket']:
+	    vlog(3, 'assigned Ticket %s to c%s for replaced cable %s' % (old['ticket'], new_cid, old_cid))
 	    #assign old ticket to new cable if it doesn't have one already
 	    SQL.execute('''
 		UPDATE
@@ -1537,13 +1519,13 @@ def mark_replaced_cable(cid, new_cid, comment):
 		WHERE
 		    cid = ?
 		;''', (
+		    old['ticket'],
 		    new_cid,
-		    old_ticket
 	    ));
 	else:
-	    vlog(3, 'replacement cable c%s already has ticket t%s assigned' % (new_cid, new_ticket))
+	    vlog(3, 'replacement cable c%s already has ticket t%s assigned' % (new_cid, new['ticket']))
 
-    remove_cable(cid, comment, False) 
+    remove_cable(old_cid, comment, False) 
 
 def convert_guid_intstr(guid):
     """ normalise representation of guid to string of an integer 
@@ -2049,6 +2031,10 @@ def dump_help(full = False):
 	    sets the suspected count back to 0
 	    disassociate Extraview ticket from Cable
 
+	replace: {0} replace {{comment}} {{new cable}} {{old cables}}+
+	    marks old cables as replaced by new cable (clones ticket if one exists to new cable)
+	    sets the old cable as removed (disables all future detection against cable)
+
 	remove: {0} remove {{comment}} {{cables}}+ 
 	    Note: only use this if the cable has been removed/replaced permanently
 	    release cable
@@ -2191,6 +2177,13 @@ else:
     else:
 	if CMD == 'list':
 	    list_state(argv[2].lower(), argv[3:] if len(argv) > 3 else None)  
+	elif CMD == 'replace':
+            new_cid = None
+            for cid in resolve_cables([argv[3]]):
+                new_cid = cid
+            if new_cid:
+                for cid in resolve_cables(argv[4:]):
+                    mark_replaced_cable(cid, new_cid, argv[2]) 
 	elif CMD == 'remove':
 	    for cid in resolve_cables(argv[3:]):
 		remove_cable(cid, argv[2]) 
