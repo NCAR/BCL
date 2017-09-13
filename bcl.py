@@ -243,7 +243,7 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 		tid = EV.create( 
 		    'ssgev',
 		    'ssg',
-		    None,
+		    'ssgev',
 		    '%s: Bad Cable %s' % (cluster_info.get_cluster_name_formal(), cname), 
 		    '%s has been added to the %s bad cable list.' % (
 			cname, 
