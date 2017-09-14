@@ -1021,10 +1021,12 @@ def enable_cable(cid, comment):
 		    cables 
 		SET
 		    state = 'suspect',
+                    mtime = ?,
 		    comment = ?
 		WHERE
 		    cid = ?
 		;''', (
+                    time.time(),
 		    comment,
 		    cid
 	    ));
@@ -1072,10 +1074,12 @@ def disable_cable(cid, comment):
 	    SET
 		state = 'disabled',
 		online = 0,
+                mtime = ?,
 		comment = ?
 	    WHERE
 		cid = ?
 	    ;''', (
+                time.time(),
 		comment,
 		cid
 	));
@@ -1140,12 +1144,14 @@ def release_cable(cid, comment, full = False):
 		state = 'watch',
 		comment = ?,
 		suspected = ?,
+                mtime = ?,
 		ticket = ?
 	    WHERE
 		cid = ?
 	    ;''', (
 		comment,
 		0 if full else row['suspected'],
+                time.time(),
 		None if full else row['ticket'],
 		cid
 	));
@@ -1232,7 +1238,7 @@ def list_state(what, list_filter):
 			ignore = 0 and 
 			cid = ? and
 			mtime >= ?
-		    ORDER BY iid ASC
+		    ORDER BY mtime ASC
 		''', (
 		    int(row['cid']),
 		    int(row['mtime']) if row['mtime'] else None,
