@@ -928,7 +928,7 @@ def send_casg(cid, comment):
 
 		The follow cable has been marked for repairs following:
 
-		    https://wiki.ucar.edu/display/ssg/Infiniband+Cable+Repair+-+DRAFT
+		    https://wiki.ucar.edu/display/ssg/Infiniband+Cable+Repair
 
 		This cable has had %s events that required repair to date.
 
