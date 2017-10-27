@@ -35,7 +35,7 @@ def command(nodeset, command):
 
     task = task_self()
 
-    syslog.syslog('clush_ipmi: nodeset:%s command:%s' % (nodeset, command))
+    vlog(4,'clush_ipmi: nodeset:%s command:%s' % (nodeset, command))
 
     if not sgi_cluster.is_sac():
 	vlog(1, "only run this from SAC node")

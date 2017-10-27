@@ -44,6 +44,22 @@ def get_ice_info(node):
 	'bmc':	'r{0}i{1}n{2}-bmc'.format(m.group(1), m.group(2), m.group(3))
     }
 
+def get_ice_switch_info(node):
+    m = re.search('^r([0-9]+)i([0-9]+)s([0-9]+)(-bmc|)$', node) 
+
+    if not m:
+	return False
+
+    return {
+	'rack':	m.group(1),
+	'lead':	'r{0}lead'.format(m.group(1)),
+	'scmc':	'r{0}i{1}s{2}-bmc'.format(m.group(1), m.group(2), m.group(3)),
+	'iru':	m.group(2),
+	'switch': m.group(3),
+	'bmc':	'r{0}i{1}s{2}-bmc'.format(m.group(1), m.group(2), m.group(3))
+    }
+ 
+
 def get_lead(node):
     """ get lead but only from sac """
     if not is_sac():
@@ -52,13 +68,23 @@ def get_lead(node):
     info = get_ice_info(node)
     if info:
 	return info['lead']
-    else:
-	return socket.gethostname() 
+    info = get_ice_switch_info(node)
+    if info:
+	return info['lead']
+     
+    return socket.gethostname() 
 
 def get_bmc(node):
     """ get node bmc name """
     
-    return "{0}-bmc".format(node)
+    info = get_ice_info(node)
+    if info:
+	return info['bmc']
+    info = get_ice_switch_info(node)
+    if info:
+	return info['bmc']
+ 
+    return node
  
 def get_sm():
     """ get smc nodes """
