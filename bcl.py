@@ -1930,7 +1930,7 @@ def run_parse(dump_dir):
 		cid,
 		issue['issue'],
 		issue['raw'],
-		issue['source'],
+		dump_dir,
 		timestamp
 	    )
 	else:
