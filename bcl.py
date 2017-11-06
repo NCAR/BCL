@@ -1818,6 +1818,7 @@ def run_parse(dump_dir):
     #Find any cables that are known but not parsed this time around (aka went dark)
     #ignore any cables in a disabled state
     missing_cables = set()
+    disabled_cables = set()
     SQL.execute('''
 	    SELECT 
 		cid,
@@ -1826,6 +1827,9 @@ def run_parse(dump_dir):
 		cables
 	''')
     for row in SQL.fetchall():
+        if row['state'] in ['removed', 'disabled']:
+	    disabled_cables.add(int(row['cid'])) 
+
 	if row['cid'] in known_cables:
 	    #cable found, mark it online and when
  	    SQL.execute('''
@@ -1842,7 +1846,7 @@ def run_parse(dump_dir):
 	    ));
  
 	else: #cable not found
-	    if not row['state'] in ['removed', 'disabled']:
+	    if not int(row['cid']) in disabled_cables:
 		#only note cables if they should not be missing
 		missing_cables.add(int(row['cid']))
 
@@ -1912,6 +1916,10 @@ def run_parse(dump_dir):
  
  	if issue['type'] == 'missing' and cid in hca_cables:
 	    vlog(3, 'ignoring missing cable c%s with an hca' % (cid))
+	    continue
+
+        if issue['type'] in ['missing','disabled'] and cid in disabled_cables:
+	    vlog(3, 'ignoring missing disabled or removed cable c%s' % (cid))
 	    continue
              
 	vlog(5, 'issue detected: %s' % ([
