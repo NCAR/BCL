@@ -307,12 +307,12 @@ def resolve_cable(needle):
 	Port: p#
     """
     global SQL
-
+    #Se41d2d03004bcdd0/Ne41d2d03004bcdd0/P25
     cable_match = re.compile(
 	r"""
 	    ^\s*
 	    (?P<needle>
-		(?:[sS]|)(?P<guid>(?:0x|)[a-fA-F0-9]*)/P(?P<guidport>[0-9]+)
+		(?:[sS]|)(?P<guid>(?:0x|)[a-fA-F0-9]*)(?:/[nN](?:0x|)[a-fA-F0-9]*|)/P(?P<guidport>[0-9]+)
 		|
 		t(?P<ticket>[0-9]+)
 		|
