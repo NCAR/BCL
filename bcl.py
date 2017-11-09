@@ -1957,8 +1957,8 @@ def run_parse(dump_dir):
 	    ticket_issues.append(issue['raw'])
 
     #detect cables that should be disabled but are not any more
-    print 'fabric disabled: %s' % (fabric_disabled)
-    print 'expected disabled: %s' % (disabled_cables)
+    #print 'fabric disabled: %s' % (fabric_disabled)
+    #print 'expected disabled: %s' % (disabled_cables)
     for cid in disabled_cables:
 	if not cid in fabric_disabled:
 	    vlog(3, 'Cable that should be disabled found to be enabled c%s' % (cid))
