@@ -1819,6 +1819,7 @@ def run_parse(dump_dir):
     #ignore any cables in a disabled state
     missing_cables = set()
     disabled_cables = set()
+    removed_cables = set()
     SQL.execute('''
 	    SELECT 
 		cid,
@@ -1827,9 +1828,11 @@ def run_parse(dump_dir):
 		cables
 	''')
     for row in SQL.fetchall():
-        if row['state'] in ['removed', 'disabled']:
+        if row['state'] == 'disabled':
 	    disabled_cables.add(int(row['cid'])) 
-
+	if row['state'] == 'removed':
+	    removed_cables.add(int(row['cid'])) 
+ 
 	if row['cid'] in known_cables:
 	    #cable found, mark it online and when
  	    SQL.execute('''
@@ -1905,6 +1908,7 @@ def run_parse(dump_dir):
 	    else:
 		vlog(3, 'Ignoring missing single port Cable %s' % (cid))
 
+    fabric_disabled = set()
     ticket_issues = []
     for issue in issues:
 	cid = None
@@ -1913,9 +1917,16 @@ def run_parse(dump_dir):
 	for iport in issue['ports']:
 	    if iport and 'cable_id' in iport:
 		cid = iport['cable_id']
+
+	if cid and issue['type'] == 'disabled':
+	    fabric_disabled.add(cid)
  
  	if issue['type'] == 'missing' and cid in hca_cables:
 	    vlog(3, 'ignoring missing cable c%s with an hca' % (cid))
+	    continue
+
+        if issue['type'] in ['missing','disabled'] and cid in removed_cables:
+	    vlog(3, 'ignoring missing removed cable c%s' % (cid))
 	    continue
 
         if issue['type'] in ['missing','disabled'] and cid in disabled_cables:
@@ -1944,6 +1955,14 @@ def run_parse(dump_dir):
 	else:
 	    #issues without a known cable will be aggregated into a single ticket
 	    ticket_issues.append(issue['raw'])
+
+    #detect cables that should be disabled but are not any more
+    print 'fabric disabled: %s' % (fabric_disabled)
+    print 'expected disabled: %s' % (disabled_cables)
+    for cid in disabled_cables:
+	if not cid in fabric_disabled:
+	    vlog(3, 'Cable that should be disabled found to be enabled c%s' % (cid))
+	    enable_cable(cid, 'Cable detected as enabled')
 
     SQL.execute('VACUUM;')
 
