@@ -1962,7 +1962,15 @@ def run_parse(dump_dir):
     for cid in disabled_cables:
 	if not cid in fabric_disabled:
 	    vlog(3, 'Cable that should be disabled found to be enabled c%s' % (cid))
-	    enable_cable(cid, 'Cable detected as enabled')
+            add_issue(
+		'enabled',
+		cid,
+		'Atleast one port in cable detected as enabled',
+		'csv state of cable',
+		dump_dir,
+		timestamp
+	    ) 
+	    #enable_cable(cid, 'Cable detected as enabled')
 
     SQL.execute('VACUUM;')
 
