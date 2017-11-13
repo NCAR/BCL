@@ -351,7 +351,7 @@ def resolve_cable(needle):
 		cables.flabel = ? or
 		cables.ticket = ?
 
-	    ORDER BY cables.ctime DESC
+	    ORDER BY cables.ctime ASC
 	    LIMIT 1
 	''',(    
 	    match.group('cid'),
@@ -382,7 +382,7 @@ def resolve_cable(needle):
 	    ) and
 	    cables.cid = port.cid 
 
-	ORDER BY cables.ctime DESC
+	ORDER BY cables.ctime ASC
 	LIMIT 1
     ''',(    
 	int(match.group('cpid')) if match.group('cpid') else 0,
