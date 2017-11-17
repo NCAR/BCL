@@ -2,6 +2,7 @@
 from sys import path, argv, stderr
 path.append("/ssg/bin/python_modules/")
 import extraview_cli
+import nfile
 from nlog import vlog,die_now
 from ClusterShell.NodeSet import NodeSet
 from ClusterShell.Task import task_self
@@ -19,6 +20,7 @@ import datetime
 import re
 import csv
 import sys
+import time
 
 def initialize_db():
     """ Initialize DATABASE state variable 
@@ -868,6 +870,90 @@ def query_cable_ports(cid):
 		for line in field.split(os.linesep):
 		    print '%s: %s' % (row['flabel'], line)
  
+def dump_debug(cid, output_path):
+    """ dumps switch states per mellanox requirements """
+    
+    def opath ( dir_name, file_name = None ):
+	""" Takes file_name and returns full path to file in output directory """
+	if file_name:
+	    return os.path.join(output_path, dir_name, file_name)
+	return os.path.join(output_path, dir_name)
+
+    SQL.execute('''
+	SELECT 
+	    guid,
+	    port,
+	    hca,
+	    flabel
+	FROM 
+	    cable_ports 
+	WHERE
+	    cid = ?
+    ''',(
+	cid,
+    ))
+
+    ## Node info: Lid 1627
+    lidregex = re.compile( r"""^# Node info: Lid (?P<lid>\d+)""") 
+
+    nfile.mkdir_p(output_path)
+
+    for row in SQL.fetchall(): 
+	label = hex(int(row['guid']))
+	#use smpquery to figure out the lid of the ca
+	#r1lead:~ # smpquery nodeinfo -G 0xe41d2d03004bef70  30
+	## Node info: Lid 1627
+	#BaseVers:........................1
+	#ClassVers:.......................1
+	#NodeType:........................Switch
+	#NumPorts:........................30
+	#SystemGuid:......................0xe41d2d03004bef70
+	#Guid:............................0xe41d2d03004bef70
+	#PortGuid:........................0xe41d2d03004bef70
+	#PartCap:.........................8
+	#DevId:...........................0xcb20
+	#Revision:........................0x000000a0
+	#LocalPort:.......................17
+	#VendorId:........................0x0002c9
+
+	ret = ib_mgt.exec_opensm_to_string("smpquery nodeinfo -G %s %s" % (int(row['guid']), int(row['port'])), True)
+	if not ret:
+	    vlog(1, 'Unable to query state of %s' % (row['flabel']))
+	else:
+	    for node, output in ret['output'].iteritems():
+		for out in output:
+		    match = lidregex.match(out)
+		    if not match:
+			vlog(1, 'Unable to find lid of %s' % (row['flabel']))
+		    else:
+			lid = match.group('lid')
+
+			nfile.mkdir_p(opath(label))
+
+			if row['hca']:
+			    vlog(3, 'Skipping HCA %s' % (row['flabel'])) 
+			else: #switch
+			    #3 "mlxdump -d lid-$LID snapshot -m full" snapshots in a row
+			    #mellanox asked for 3 dumps every time
+			    for i in range(1, 3):
+				time.sleep(5)
+				ib_mgt.exec_opensm_to_file(
+				    'cd /var/tmp/; rm -f mlxdump.udmp; date; mlxdump -d lid-%s snapshot -m full 2>&1; mv -v mlxdump.udmp mlxdump.%s.udmp' % (lid, i), 
+				    opath(label, 'mlxdump.%s.log' % (i))
+				)
+				ib_mgt.pull_opensm_files(opath(label), ' /var/tmp/mlxdump.%s.udmp' % (i) )
+				#ib_mgt.pull_opensm_files(opath(label, 'mlxdump.%s.log' % (i)), '/var/tmp/mlxdump')
+     
+			    #flint -d lid-$LID q                                       
+			    ib_mgt.exec_opensm_to_file(
+				'flint -d lid-%s q 2>/dev/null' % (lid), 
+				opath(label, 'flint-query.log')
+			    )
+
+			    nfile.write_file(
+				opath(label, 'switch-info.txt'),
+				'Switch Name: %s' % row['flabel']
+			    )
 
 def send_casg(cid, comment):
     """ disable cable and send ticket to CASG """
@@ -2066,6 +2152,16 @@ def dump_help(full = False):
 		set cable state to watch
 		close Extraview ticket
 
+	mlxdump: 
+	    {0} dump {{path to output directory}}
+	    {0} mlxdump {{path to output directory}}
+
+	    Note: Only works on switches currently
+
+	    Takes following files and puts them into the output directory:
+		3 "mlxdump -d lid-$LID snapshot -m full" snapshots in a row
+		flint -d lid-$LID q
+ 
 	rejuvenate: {0} rejuvenate {{comment}} {{cables}}+ 
 	    Note: only use this if the cable has been replaced and it was not autodetected
 	    release cable
@@ -2228,6 +2324,9 @@ else:
 	elif CMD == 'remove':
 	    for cid in resolve_cables(argv[3:]):
 		remove_cable(cid, argv[2]) 
+ 	elif CMD == 'mlxdump' or CMD == 'dump':
+	    for cid in resolve_cables(argv[3:]):
+		dump_debug(cid, argv[2]) 
 	elif CMD == 'disable':
 	    for cid in resolve_cables(argv[3:]):
 		disable_cable(cid, argv[2])
