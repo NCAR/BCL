@@ -21,6 +21,7 @@ import re
 import csv
 import sys
 import time
+import shutil
 
 def initialize_db():
     """ Initialize DATABASE state variable 
@@ -880,21 +881,30 @@ def dump_debug(cid, output_path):
 	return os.path.join(output_path, dir_name)
 
     SQL.execute('''
-	SELECT 
-	    guid,
-	    port,
-	    hca,
-	    flabel
+    	SELECT 
+	    cables.cid as cid,
+	    cp.guid as guid,
+	    cp.port as port,
+	    cp.hca as hca,     
+	    cables.mtime as mtime,
+	    cp.flabel as flabel
 	FROM 
-	    cable_ports 
+	    cables
+	INNER JOIN
+	    cable_ports as cp
+	ON
+	    cables.cid = cp.cid
 	WHERE
-	    cid = ?
+	    cables.cid == ? 
     ''',(
 	cid,
     ))
 
     ## Node info: Lid 1627
     lidregex = re.compile( r"""^# Node info: Lid (?P<lid>\d+)""") 
+
+    guids = set()
+    sources = set()
 
     nfile.mkdir_p(output_path)
 
@@ -919,40 +929,85 @@ def dump_debug(cid, output_path):
 	ret = ib_mgt.exec_opensm_to_string("smpquery nodeinfo -G %s %s" % (int(row['guid']), int(row['port'])), True)
 	if not ret:
 	    vlog(1, 'Unable to query state of %s' % (row['flabel']))
+	elif row['guid'] in guids:
+	    vlog(4, 'Skipping repeat pull of %s' % (row['flabel']))
 	else:
+	    guids.add(row['guid'])
 	    for node, output in ret['output'].iteritems():
 		for out in output:
 		    match = lidregex.match(out)
 		    if not match:
-			vlog(1, 'Unable to find lid of %s' % (row['flabel']))
+		        vlog(1, 'Unable to find lid of %s' % (row['flabel']))
 		    else:
-			lid = match.group('lid')
+		        lid = match.group('lid')
 
-			nfile.mkdir_p(opath(label))
+		        nfile.mkdir_p(opath(label))
 
-			if row['hca']:
-			    vlog(3, 'Skipping HCA %s' % (row['flabel'])) 
-			else: #switch
-			    #3 "mlxdump -d lid-$LID snapshot -m full" snapshots in a row
-			    #mellanox asked for 3 dumps every time
-			    for i in range(1, 4):
-				time.sleep(5)
-				ib_mgt.exec_opensm_to_file(
-				    'cd /var/tmp/; rm -f mlxdump.udmp; date; mlxdump -d lid-%s snapshot -m full 2>&1; mv -v mlxdump.udmp mlxdump.%s.udmp' % (lid, i), 
-				    opath(label, 'mlxdump.%s.log' % (i))
-				)
-				ib_mgt.pull_opensm_files(opath(label), ' /var/tmp/mlxdump.%s.udmp' % (i) )
+		        if row['hca']:
+		            vlog(3, 'Skipping HCA %s' % (row['flabel'])) 
+		        else: #switch
+		            #3 "mlxdump -d lid-$LID snapshot -m full" snapshots in a row
+		            #mellanox asked for 3 dumps every time
+		            for i in range(1, 4):
+		        	time.sleep(5)
+		        	ib_mgt.exec_opensm_to_file(
+		        	    'cd /var/tmp/; rm -f mlxdump.udmp; date; mlxdump -d lid-%s snapshot -m full 2>&1; mv -v mlxdump.udmp mlxdump.%s.udmp' % (lid, i), 
+		        	    opath(label, 'mlxdump.%s.log' % (i))
+		        	)
+		        	ib_mgt.pull_opensm_files(opath(label), ' /var/tmp/mlxdump.%s.udmp' % (i) )
      
-			    #flint -d lid-$LID q                                       
-			    ib_mgt.exec_opensm_to_file(
-				'flint -d lid-%s q 2>/dev/null' % (lid), 
-				opath(label, 'flint-query.log')
-			    )
+		            #flint -d lid-$LID q                                       
+		            ib_mgt.exec_opensm_to_file(
+		        	'flint -d lid-%s q 2>/dev/null' % (lid), 
+		        	opath(label, 'flint-query.log')
+		            )
 
-			    nfile.write_file(
-				opath(label, 'switch-info.txt'),
-				'Switch Name: %s' % row['flabel']
-			    )
+		            nfile.write_file(
+		        	opath(label, 'switch-info.txt'),
+		        	'Switch Name: %s' % row['flabel']
+		            )
+
+	SQL.execute('''
+		SELECT 
+		    source
+		FROM 
+		    issues 
+		WHERE
+		    ignore = 0 and 
+		    cid = ? and
+		    mtime >= ?
+		ORDER BY mtime ASC
+	    ''', (
+		int(row['cid']),
+		int(row['mtime']) if row['mtime'] else None,
+	    ))
+
+	for irow in SQL.fetchall():
+	    src = str(irow['source'])
+	    if src in sources:
+		vlog(4, 'skipping repeat source: %s' % (src))
+	    else:
+		sources.add(src)
+		if not os.path.isdir(src):
+		    vlog(4, 'skipping non-directory source: %s' % (src))
+		else:
+		    p = None
+		    sp = os.path.split(src)
+		    if os.path.isdir(sp[1]):
+			p = sp[1]
+		    elif os.path.isdir(sp[0]):
+			sp = os.path.split(sp[0])
+			p = sp[1]
+
+		    if not p:
+			vlog(4, 'skipping unknown directory source: %s' % (p))
+		    else:
+			cpp = os.path.join(output_path, p)
+			if os.path.isdir(cpp):
+			    vlog(3, 'skipping repeat copying %s -> %s' % (src, cpp))
+			else:
+			    vlog(3, 'Copying %s -> %s' % (src, cpp))
+			    shutil.copytree(src, cpp, False)
 
 def send_casg(cid, comment):
     """ disable cable and send ticket to CASG """
