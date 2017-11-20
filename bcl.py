@@ -935,14 +935,13 @@ def dump_debug(cid, output_path):
 			else: #switch
 			    #3 "mlxdump -d lid-$LID snapshot -m full" snapshots in a row
 			    #mellanox asked for 3 dumps every time
-			    for i in range(1, 3):
+			    for i in range(1, 4):
 				time.sleep(5)
 				ib_mgt.exec_opensm_to_file(
 				    'cd /var/tmp/; rm -f mlxdump.udmp; date; mlxdump -d lid-%s snapshot -m full 2>&1; mv -v mlxdump.udmp mlxdump.%s.udmp' % (lid, i), 
 				    opath(label, 'mlxdump.%s.log' % (i))
 				)
 				ib_mgt.pull_opensm_files(opath(label), ' /var/tmp/mlxdump.%s.udmp' % (i) )
-				#ib_mgt.pull_opensm_files(opath(label, 'mlxdump.%s.log' % (i)), '/var/tmp/mlxdump')
      
 			    #flint -d lid-$LID q                                       
 			    ib_mgt.exec_opensm_to_file(
