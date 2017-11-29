@@ -127,11 +127,35 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 
     iid = None
 
+    #find if this issue is already ignored
+    SQL.execute('''
+	SELECT 
+	    iid
+	FROM 
+	    issues
+	WHERE
+	    type = ? and
+	    issue = ? and
+	    ( ? IS NULL or raw = ? ) and
+	    ignore = 1 and
+	    cid = ?
+	LIMIT 1
+    ''',(
+	issue_type,
+	issue,
+	raw, raw,
+	cid       
+    ))
+
+    for row in SQL.fetchall():
+	iid = row['iid']
+	vlog(2, 'Ignoring existing issue i%s' % (iid))
+	return
+
     #find if this exact issue already exists
     SQL.execute('''
 	SELECT 
-	    iid,
-	    ignore
+	    iid
 	FROM 
 	    issues
 	WHERE
@@ -154,9 +178,6 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
     #since a new issue would have a new cable
     for row in SQL.fetchall():
 	iid = row['iid']
-	if row['ignore'] != 0:
-	    vlog(2, 'Ignoring issue i%s' % (iid))
-	    return
 	break
 
     if not iid:
@@ -1511,7 +1532,7 @@ def list_state(what, list_filter):
 		    )
 
     elif what == 'issues':
-        f='{0:<10}{1:<15}{2:<10}{3:<10}{4:<15}{5:<20}{6:<100}{7:<50}'
+	f='{0:<10}{1:<15}{2:<10}{3:<10}{4:<15}{5:<20}:{6:<100}{7:<50}'
  	print f.format(
 		"issue_id",
 		"Type",
@@ -1551,7 +1572,7 @@ def list_state(what, list_filter):
 			row['mtime'],
 			row['source'],
 			row['issue'],
-			row['raw'].replace("\n", "\\n") if row['raw'] else None
+			row['raw'].replace("\n", "\\n") if row['ignore'] == 0 and row['raw'] else None
 		    )
 
     else:
