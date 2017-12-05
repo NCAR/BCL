@@ -554,9 +554,8 @@ def parse_ibdiagnet ( ports, issues, contents ):
 				   'port_rcv_switch_relay_errors', 
 				   'port_xmit_discard' 
 			       ] or
-			       ( #ignore reconnects for HCAs since they happen often
-				   cmatch.group('counter') == 'link_down_counter' and
-				   port and port['type'] == "CA"
+			       ( #ignore reconnects for HCAs since they happen often for node crashes
+				   cmatch.group('counter') == 'link_down_counter' and int(cmatch.group('value')) < 3
 			       )  or
 			       ( #ignore small numbers of corruption errors
 				   str(cmatch.group('counter')) in [ 'port_rcv_errors', 'symbol_error_counter', 'port_rcv_remote_physical_errors', 'vl15_dropped' ] and
