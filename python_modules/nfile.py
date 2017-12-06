@@ -49,21 +49,28 @@ def exec_to_string_with_input ( cmd, input):
     """ Runs cmd, sends input to STDIN and places Return Value, STDOUT, STDERR into returned list  """
     vlog(4, 'Running command: %s' % cmd) 
     try:
-	with subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd='/tmp/') as p:
+	p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd='/tmp/')
+	if p:	    
 	    stdout, stderr = p.communicate(input=input)
-	    return [p.returncode, stdout, stderr ]
-    except:
-	vlog(1, 'Command %s failed' % cmd)
-	return [-1, '', 'Failed to run']
+	    return [ p.returncode, stdout, stderr ]
+
+    except Exception as e:
+	vlog(1, 'Command %s failed with error: %s' % (cmd, e))
+	return [-1, '', 'Failed to run']  
 
 def exec_to_string ( cmd, cwd='/tmp/' ):
     """ Runs cmd and places Return Value, STDOUT, STDERR into returned list  """
     vlog(4, 'Running command: %s' % cmd) 
-    with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd) as p:
-	stdout, stderr = p.communicate()
-	return [ p.returncode, stdout, stderr ] 
 
-    vlog(1, 'Command %s failed' % cmd)
+    try:
+	p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd)
+	if p:
+	    stdout, stderr = p.communicate()
+	    return [ p.returncode, stdout, stderr ] 
+
+    except Exception as e:
+	vlog(1, 'Command %s failed with error: %s' % (cmd, e))
+	return [-1, '', 'Failed to run'] 
 
 #https://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
 def mkdir_p(path, mode = 0755):
