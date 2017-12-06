@@ -79,7 +79,7 @@ def get_ice_node_image(node):
     if is_smc_version_atleast("3.5.0"): 
 	(ret, out, err) = nfile.exec_to_string(['/opt/sgi/sbin/cimage', '--show-nodes', node])
     else:
-	(ret, out, err) = nfile.exec_to_string('/opt/sgi/sbin/cimage --list-nodes %s' % (node))
+	(ret, out, err) = nfile.exec_to_string(['/opt/sgi/sbin/cimage', '--list-nodes', node])
 
     if ret != 0:
 	return None
