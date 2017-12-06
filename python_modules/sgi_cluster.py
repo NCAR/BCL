@@ -36,6 +36,20 @@ def get_smc_version():
     #grab last word after comma
     vt = vi[0].split()
     return vt[len(vt) - 1]
+
+def is_smc_version_atleast(version):
+    """ Compare smc version by each revision to insure running is atleast version """
+    vp = version.split('.')
+    sp = get_smc_version().split('.')
+
+    if sp[0] < vp[0]:
+	return False
+    if sp[1] < vp[1]:
+	return False
+    if sp[2] < vp[2]:
+	return False
+
+    return True
  
 def is_sac():
     host = socket.gethostname()
@@ -60,6 +74,21 @@ def get_ice_info(node):
 	'bmc':	'r{0}i{1}n{2}-bmc'.format(m.group(1), m.group(2), m.group(3))
     }
 
+def get_ice_node_image(node):
+    #SGI renamed to query
+    if is_smc_version_atleast("3.5.0"): 
+	(ret, out, err) = nfile.exec_to_string(['/opt/sgi/sbin/cimage', '--show-nodes', node])
+    else:
+	(ret, out, err) = nfile.exec_to_string('/opt/sgi/sbin/cimage --list-nodes %s' % (node))
+
+    if ret != 0:
+	return None
+
+    #/opt/sgi/sbin/cimage --show-nodes r1i2n1
+    #r1i2n1: ice-sles12sp2 4.4.21-69-default tmpfs
+    return out.split()[1]
+    
+ 
 def get_ice_switch_info(node):
     m = re.search('^r([0-9]+)i([0-9]+)s([0-9]+)(-bmc|)$', node) 
 
