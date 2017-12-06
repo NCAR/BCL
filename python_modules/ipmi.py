@@ -1,4 +1,5 @@
 #!/usr/bin/python
+import socket
 from sys import path, argv
 path.append("/ssg/bin/python_modules/")
 from nlog import vlog,die_now
@@ -28,7 +29,10 @@ class __OutputHandler(ClusterShell.Event.EventHandler):
             vlog(2, "clush: %s: exited with exit code %d" % (ns, rc))
 
     def ev_timeout(self, worker):
-        vlog(2, "clush: %s: command timeout" % worker.last_node())
+	if worker.current_node:
+	    vlog(2, "clush: %s: command timeout" % worker.current_node)
+	else:
+	    vlog(2, "clush: command timeout")
 
 def command(nodeset, command):
     output = {}
@@ -44,12 +48,23 @@ def command(nodeset, command):
     for node in nodeset:
 	lead = sgi_cluster.get_lead(node)
 	if lead:
-	    task.shell(
-		'/usr/diags/bin/bcmd -H {0} {1}'.format(sgi_cluster.get_bmc(node), command), 
-		nodes=lead, 
-		timeout=30,  
-		handler=__OutputHandler(node, output)
-	    )
+	    if lead == socket.gethostname():
+		cmd = '/usr/diags/bin/bcmd -H {0} {1}'.format(sgi_cluster.get_bmc(node), command)
+		vlog(4, 'calling bcmd on localhost: %s' % cmd)
+	        task.shell(
+		    cmd, 
+		    timeout=30,  
+		    handler=__OutputHandler(node, output)
+		) 
+	    else:
+		cmd = '/usr/diags/bin/bcmd -H {0} {1}'.format(sgi_cluster.get_bmc(node), command)
+		vlog(4, 'calling bcmd on %s: %s' % (lead, cmd))
+		task.shell(
+		    cmd,
+		    nodes=lead, 
+		    timeout=30,  
+		    handler=__OutputHandler(node, output)
+		)
 
     task.run()
 
