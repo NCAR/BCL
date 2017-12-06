@@ -6,6 +6,7 @@
 import socket
 import re
 from nlog import vlog,die_now
+import nfile
 
 def get_cluster_name():
     if re.search("^la", socket.gethostname()):
@@ -20,6 +21,21 @@ def get_cluster_name_formal():
     if re.search("^ch", socket.gethostname()):
 	return 'Cheyenne'
     return None
+
+def get_smc_version():
+    smcvtxt = nfile.read_file_first_line('/etc/sgi-admin-node-release')
+    if not smcvtxt:
+	return None
+
+    #HPE doesnt really have a nice pattern for pulling this
+    #SGI Management Center Admin Node 3.5.0, Build 716r177.sles12sp2-1705051348
+    #SGI Tempo Admin Node 3.3.0, Build 714r18.sles12sp1-1604041900
+
+    #split by comma first
+    vi = smcvtxt.split(',')
+    #grab last word after comma
+    vt = vi[0].split()
+    return vt[len(vt) - 1]
  
 def is_sac():
     host = socket.gethostname()
