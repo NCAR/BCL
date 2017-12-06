@@ -302,5 +302,3 @@ class client:
 	params.update(fields)
 
 	return self.update(id, params)
-                 
- 
