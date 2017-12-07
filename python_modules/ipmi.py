@@ -16,7 +16,8 @@ class __OutputHandler(ClusterShell.Event.EventHandler):
         self._label = label
 	self.output = output
     def ev_read(self, worker):
-        ns, buf = worker.last_read()
+        buf = worker.current_msg
+	ns = worker.current_msg
         if self._label:
 	    if not self._label in self.output:
 		self.output[self._label] = []
@@ -24,9 +25,8 @@ class __OutputHandler(ClusterShell.Event.EventHandler):
 	    self.output[self._label].append(buf)
 
     def ev_hup(self, worker):
-        ns, rc = worker.last_retcode()
-        if rc > 0:
-            vlog(2, "clush: %s: exited with exit code %d" % (ns, rc))
+        if worker.current_rc > 0:
+            vlog(2, "clush: %s: exited with exit code %d" % (worker.current_node, worker.current_rc))
 
     def ev_timeout(self, worker):
 	if worker.current_node:
