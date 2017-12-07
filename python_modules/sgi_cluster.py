@@ -129,7 +129,7 @@ def get_bmc(node):
     if info:
 	return info['bmc']
  
-    return node
+    return '%s-bmc' % (node)
  
 def get_sm():
     """ get smc nodes """
