@@ -2,6 +2,7 @@
 from sys import path, argv, stderr
 path.append("/ssg/bin/python_modules/")
 import extraview_cli
+import nfile
 from nlog import vlog,die_now
 from ClusterShell.NodeSet import NodeSet
 from ClusterShell.Task import task_self
@@ -19,6 +20,7 @@ import datetime
 import re
 import csv
 import sys
+import time
 
 def initialize_db():
     """ Initialize DATABASE state variable 
@@ -243,7 +245,7 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 		tid = EV.create( 
 		    'ssgev',
 		    'ssg',
-		    None,
+		    'ssgev',
 		    '%s: Bad Cable %s' % (cluster_info.get_cluster_name_formal(), cname), 
 		    '%s has been added to the %s bad cable list.' % (
 			cname, 
@@ -307,12 +309,12 @@ def resolve_cable(needle):
 	Port: p#
     """
     global SQL
-
+    #Se41d2d03004bcdd0/Ne41d2d03004bcdd0/P25
     cable_match = re.compile(
 	r"""
 	    ^\s*
 	    (?P<needle>
-		(?:[sS]|)(?P<guid>(?:0x|)[a-fA-F0-9]*)/P(?P<guidport>[0-9]+)
+		(?:[sS]|)(?P<guid>(?:0x|)[a-fA-F0-9]*)(?:/[nN](?:0x|)[a-fA-F0-9]*|)/P(?P<guidport>[0-9]+)
 		|
 		t(?P<ticket>[0-9]+)
 		|
@@ -351,7 +353,7 @@ def resolve_cable(needle):
 		cables.flabel = ? or
 		cables.ticket = ?
 
-	    ORDER BY cables.ctime DESC
+	    ORDER BY cables.ctime ASC
 	    LIMIT 1
 	''',(    
 	    match.group('cid'),
@@ -382,7 +384,7 @@ def resolve_cable(needle):
 	    ) and
 	    cables.cid = port.cid 
 
-	ORDER BY cables.ctime DESC
+	ORDER BY cables.ctime ASC
 	LIMIT 1
     ''',(    
 	int(match.group('cpid')) if match.group('cpid') else 0,
@@ -868,6 +870,90 @@ def query_cable_ports(cid):
 		for line in field.split(os.linesep):
 		    print '%s: %s' % (row['flabel'], line)
  
+def dump_debug(cid, output_path):
+    """ dumps switch states per mellanox requirements """
+    
+    def opath ( dir_name, file_name = None ):
+	""" Takes file_name and returns full path to file in output directory """
+	if file_name:
+	    return os.path.join(output_path, dir_name, file_name)
+	return os.path.join(output_path, dir_name)
+
+    SQL.execute('''
+	SELECT 
+	    guid,
+	    port,
+	    hca,
+	    flabel
+	FROM 
+	    cable_ports 
+	WHERE
+	    cid = ?
+    ''',(
+	cid,
+    ))
+
+    ## Node info: Lid 1627
+    lidregex = re.compile( r"""^# Node info: Lid (?P<lid>\d+)""") 
+
+    nfile.mkdir_p(output_path)
+
+    for row in SQL.fetchall(): 
+	label = hex(int(row['guid']))
+	#use smpquery to figure out the lid of the ca
+	#r1lead:~ # smpquery nodeinfo -G 0xe41d2d03004bef70  30
+	## Node info: Lid 1627
+	#BaseVers:........................1
+	#ClassVers:.......................1
+	#NodeType:........................Switch
+	#NumPorts:........................30
+	#SystemGuid:......................0xe41d2d03004bef70
+	#Guid:............................0xe41d2d03004bef70
+	#PortGuid:........................0xe41d2d03004bef70
+	#PartCap:.........................8
+	#DevId:...........................0xcb20
+	#Revision:........................0x000000a0
+	#LocalPort:.......................17
+	#VendorId:........................0x0002c9
+
+	ret = ib_mgt.exec_opensm_to_string("smpquery nodeinfo -G %s %s" % (int(row['guid']), int(row['port'])), True)
+	if not ret:
+	    vlog(1, 'Unable to query state of %s' % (row['flabel']))
+	else:
+	    for node, output in ret['output'].iteritems():
+		for out in output:
+		    match = lidregex.match(out)
+		    if not match:
+			vlog(1, 'Unable to find lid of %s' % (row['flabel']))
+		    else:
+			lid = match.group('lid')
+
+			nfile.mkdir_p(opath(label))
+
+			if row['hca']:
+			    vlog(3, 'Skipping HCA %s' % (row['flabel'])) 
+			else: #switch
+			    #3 "mlxdump -d lid-$LID snapshot -m full" snapshots in a row
+			    #mellanox asked for 3 dumps every time
+			    for i in range(1, 3):
+				time.sleep(5)
+				ib_mgt.exec_opensm_to_file(
+				    'cd /var/tmp/; rm -f mlxdump.udmp; date; mlxdump -d lid-%s snapshot -m full 2>&1; mv -v mlxdump.udmp mlxdump.%s.udmp' % (lid, i), 
+				    opath(label, 'mlxdump.%s.log' % (i))
+				)
+				ib_mgt.pull_opensm_files(opath(label), ' /var/tmp/mlxdump.%s.udmp' % (i) )
+				#ib_mgt.pull_opensm_files(opath(label, 'mlxdump.%s.log' % (i)), '/var/tmp/mlxdump')
+     
+			    #flint -d lid-$LID q                                       
+			    ib_mgt.exec_opensm_to_file(
+				'flint -d lid-%s q 2>/dev/null' % (lid), 
+				opath(label, 'flint-query.log')
+			    )
+
+			    nfile.write_file(
+				opath(label, 'switch-info.txt'),
+				'Switch Name: %s' % row['flabel']
+			    )
 
 def send_casg(cid, comment):
     """ disable cable and send ticket to CASG """
@@ -928,7 +1014,7 @@ def send_casg(cid, comment):
 
 		The follow cable has been marked for repairs following:
 
-		    https://wiki.ucar.edu/display/ssg/Infiniband+Cable+Repair+-+DRAFT
+		    https://wiki.ucar.edu/display/ssg/Infiniband+Cable+Repair
 
 		This cable has had %s events that required repair to date.
 
@@ -1021,10 +1107,12 @@ def enable_cable(cid, comment):
 		    cables 
 		SET
 		    state = 'suspect',
+                    mtime = ?,
 		    comment = ?
 		WHERE
 		    cid = ?
 		;''', (
+                    time.time(),
 		    comment,
 		    cid
 	    ));
@@ -1072,10 +1160,12 @@ def disable_cable(cid, comment):
 	    SET
 		state = 'disabled',
 		online = 0,
+                mtime = ?,
 		comment = ?
 	    WHERE
 		cid = ?
 	    ;''', (
+                time.time(),
 		comment,
 		cid
 	));
@@ -1140,12 +1230,14 @@ def release_cable(cid, comment, full = False):
 		state = 'watch',
 		comment = ?,
 		suspected = ?,
+                mtime = ?,
 		ticket = ?
 	    WHERE
 		cid = ?
 	    ;''', (
 		comment,
 		0 if full else row['suspected'],
+                time.time(),
 		None if full else row['ticket'],
 		cid
 	));
@@ -1232,7 +1324,7 @@ def list_state(what, list_filter):
 			ignore = 0 and 
 			cid = ? and
 			mtime >= ?
-		    ORDER BY iid ASC
+		    ORDER BY mtime ASC
 		''', (
 		    int(row['cid']),
 		    int(row['mtime']) if row['mtime'] else None,
@@ -1412,80 +1504,73 @@ def list_state(what, list_filter):
 	vlog(1, 'unknown list %s request' % (list_filter))
 
 
-def mark_replaced_cable(cid, new_cid, comment):
+def mark_replaced_cable(old_cid, new_cid, comment):
     """ Marks cable as replaced by new cable """
-    vlog(5, 'Mark replaced cable cid=%s new_cid=%s' % (cid, new_cid))
+    vlog(5, 'Mark replaced cable old_cid=%s new_cid=%s' % (old_cid, new_cid))
 
-    if cid == new_cid:
+    if old_cid == new_cid:
+        vlog(1, 'Refusing to replace cable c%s with itself' % (old_cid))
 	return
 
-    #find the cable details of the old cable
-    SQL.execute('''
-        SELECT 
+    def get_cable_info(cid):
+        SQL.execute('''
+            SELECT 
+                cid,
+                SN,
+                PN,
+                length,
+                ticket,
+                flabel,
+                state
+            FROM 
+                cables
+            WHERE
+                cid = ? 
+            LIMIT 1
+        ''',(
             cid,
-            SN,
-            PN,
-	    length,
-	    ticket,
-	    flabel
-        FROM 
-            cables
-    
-        WHERE
-            cid != ? 
-        LIMIT 1
-    ''',(
-        cid,
-    ))
-    
-    old_SN = None
-    old_PN = None
-    old_length = None
-    old_ticket = None
-    old_flabel = None
-    for row in SQL.fetchall():
-	old_SN = row['SN']
-	old_PN = row['PN']
-	old_length = row['length']
-	old_ticket = row['ticket']
-	old_flabel = row['flabel']
+        ))
+        
+        for row in SQL.fetchall():
+            return {
+                'cid': row['cid'],
+                'SN': row['SN'] if row['SN'] else 'Unknown',
+                'PN': row['PN'] if row['PN'] else 'Unknown',
+                'state': row['state'],
+                'length': row['length'] if row['length'] else 'Unknown',
+                'ticket': row['ticket'],
+                'flabel': row['flabel']
+            }
 
-    #find the new cable details
-    SQL.execute('''
-        SELECT 
-            cid,
-            SN,
-            PN,
-	    length,
-	    ticket,
-	    flabel
-        FROM 
-            cables
-    
-        WHERE
-            cid != ? 
-        LIMIT 1
-    ''',(
-        new_cid,
-    ))
-    
-    new_SN = None
-    new_PN = None
-    new_length = None
-    new_ticket = None
-    new_flabel = None
-    for row in SQL.fetchall():
-	new_SN = row['SN']
-	new_PN = row['PN']
-	new_length = row['length']
-	new_ticket = row['ticket']
-	new_flabel = row['flabel'] 
+        return None
 
-    vlog(3, 'Replacing c%s with cable c%s' % (cid, new_cid))
-    if old_ticket:
+    old = get_cable_info(old_cid)
+    new = get_cable_info(new_cid)
+
+    #sanity checks
+    if not old:
+        vlog(2, 'Unable to find old cable c%s' % (old_cid))
+        return False
+
+    if not new:
+        vlog(2, 'Unable to find new cable c%s' % (new_cid))
+        return False
+
+    if old['state'] == 'removed':
+        vlog(2, 'Refusing to replace removed cable c%s' % (old_cid))
+        return False
+
+    if new['state'] == 'removed':
+        vlog(2, 'Refusing to replace cable c%s with removed cable c%s' % (old_cid, new_cid))
+        return False
+
+    vlog(3, 'Replacing c%s with cable c%s' % (old_cid, new_cid))
+    if not old['ticket']:
+        vlog(4, 'Replaced cable c%s has no ticket.' % (old_cid))
+    else:
 	if not DISABLE_TICKETS:
-            vlog(4, 'Updated Ticket %s for c%s for replacement cable %s' % (old_ticket, cid, new_cid))
-	    EV.add_resolver_comment(old_ticket, '''
+            vlog(4, 'Updated Ticket %s for c%s for replacement cable %s' % (old['ticket'], new_cid, old_cid))
+	    EV.add_resolver_comment(old['ticket'], '''
 		This cable has been replaced by a new cable:
 
 		%s
@@ -1504,19 +1589,19 @@ def mark_replaced_cable(cid, new_cid, comment):
 		
 	    ''' % (
 		    comment,
-		    new_flabel,
-		    new_length if new_length else 'Unknown',
-		    new_SN if new_SN else 'Unknown',
-		    new_PN if new_PN else 'Unknown',
-		    old_flabel,
-		    old_length if old_length else 'Unknown',
-		    old_SN if old_SN else 'Unknown',
-		    old_PN if old_PN else 'Unknown'
+		    new['flabel'],
+		    new['length'],
+		    new['SN'],
+		    new['PN'],
+		    old['flabel'],
+		    old['length'],
+		    old['SN'],
+		    old['PN']
 		)
 	    ); 
 
-	if not new_ticket:
-	    vlog(3, 'assigned Ticket %s for c%s to replacement cable %s' % (old_ticket, cid, new_cid))
+	if not new['ticket']:
+	    vlog(3, 'assigned Ticket %s to c%s for replaced cable %s' % (old['ticket'], new_cid, old_cid))
 	    #assign old ticket to new cable if it doesn't have one already
 	    SQL.execute('''
 		UPDATE
@@ -1526,13 +1611,13 @@ def mark_replaced_cable(cid, new_cid, comment):
 		WHERE
 		    cid = ?
 		;''', (
+		    old['ticket'],
 		    new_cid,
-		    old_ticket
 	    ));
 	else:
-	    vlog(3, 'replacement cable c%s already has ticket t%s assigned' % (new_cid, new_ticket))
+	    vlog(3, 'replacement cable c%s already has ticket t%s assigned' % (new_cid, new['ticket']))
 
-    remove_cable(cid, comment, False) 
+    remove_cable(old_cid, comment, False) 
 
 def convert_guid_intstr(guid):
     """ normalise representation of guid to string of an integer 
@@ -1602,6 +1687,7 @@ def run_parse(dump_dir):
 	    WHERE
 		cables.state != 'removed'
 
+            GROUP BY cables.cid
 	    ORDER BY cables.ctime DESC
 	''',(
 	    convert_guid_intstr(port1['guid']),
@@ -1613,12 +1699,16 @@ def run_parse(dump_dir):
 
 	cables = []
 	for row in SQL.fetchall():
-	    cables.append({ 
-		    'cid': int(row['cid']),
-		    'has_hca': True if row['has_hca'] == 1 else False,
-		    'SN': row['SN'],
-		    'PN': row['PN']
-	    })
+            cid = int(row['cid'])
+            if not cid is None and cid > 0:
+                cables.append({ 
+                        'cid': row['cid'],
+                        'has_hca': True if row['has_hca'] == 1 else False,
+                        'SN': row['SN'],
+                        'PN': row['PN']
+                })
+            else:
+                vlog(4, 'Unexpected invalid cable c%s: %s' % (cid, row))
 
 	return cables
 
@@ -1727,44 +1817,63 @@ def run_parse(dump_dir):
     #slow but keeps sane list of all cables forever for issue tracking
     known_cables=[] #track every that is found
     hca_cables=[] #track every that has an hca
+    all_replaced_cables=set() #every cable replaced so far
     for port in ports:
+        if 'cable_id' in port and port['cable_id']:
+            #ignore duplicate found cables
+            continue 
+
 	port1 = port
 	port2 = port['connection']
+
 	cid = None
 	hca_found = None
-	replaced_cables=[]
+	replaced_cables=set()
 	cables = find_cables(port1, port2)
         #If the current existing cable has a SN/PN, then favor the cable that matches
         if gv(port1, 'SN') and gv(port1, 'PN'):
+            #find the newest matching cable
             for cable in cables:
-                if cable['SN'] == gv(port1, 'SN') and cable['PN'] == gv(port1, 'PN'):
-                    cid = cable['cid']
-                    hca_found = cable['has_hca']
-                    vlog(5, 'Found matching cable c%s' % (cid))
-                else: #found old cable w/ different SN/PN
-                    replaced_cables.append(cable['cid'])
-                    vlog(5, 'Found replaced cable c%s' % (cable['cid']))
+                if not cable['cid'] in all_replaced_cables:
+                    if cable['SN'] == gv(port1, 'SN') and   \
+                        cable['PN'] == gv(port1, 'PN') and  \
+                        (cid is None or cable['cid'] > cid) :
+                            cid = cable['cid']
+                            hca_found = cable['has_hca']
+                            vlog(5, 'Found matching cable c%s' % (cid))
+                    else:
+                        vlog(5, 'Non-matching cable c%s rejected SN=%s PN=%s' % (cable['cid'],cable['SN'],cable['PN']))
+
+            #mark all other cables as replaced
+            if cid:
+                for cable in cables:
+                    if not cable['cid'] in all_replaced_cables and cable['cid'] != cid:
+                        #found old cable w/ different SN/PN
+                        replaced_cables.add(cable['cid'])
+                        vlog(5, 'Found replaced cable c%s' % (cable['cid']))
         else: 
             #if the detected live cable lacks a SN/PN, favor the cable that has one
             #ignore any replacements since current cable is unplugged or half-dead
+            #always favor newer cables
             cid_nosn = None
-            cid_nosn_hca_fiound = None
+            cid_nosn_hca_found = None
 	    for cable in cables:
-                if cable['SN'] and cable['PN']:
-                    cid = cable['cid']
-                    hca_found = cable['has_hca']
-                    vlog(5, 'Found matching cable c%s with serial: %s product: %s' % (cid,cable['SN'],cable['PN']))
-                    break
-                else:
-                    #record first cable found if no SN/PN are found
-                    if not cid_nosn:
-                        cid_nosn = cable['cid']
-                        cid_nosn_hca_fiound = cable['has_hca']
+                if not cable['cid'] in all_replaced_cables:
+                    if cable['SN'] and cable['PN'] and (cid is None or cable['cid'] > cid):
+                        cid = cable['cid']
+                        hca_found = cable['has_hca']
+                        vlog(5, 'Found matching cable c%s with serial: %s product: %s' % (cid,cable['SN'],cable['PN']))
+                    else:
+                        #record newest cable found if no SN/PN are found
+                        if cid_nosn is None or cable['cid'] > cid_nosn:
+                            cid_nosn = cable['cid']
+                            cid_nosn_hca_found = cable['has_hca']
+                            vlog(5, 'Found matching cable c%s without serial' % (cid_nosn))
 
             if cid is None and cid_nosn:
                 #unable to find a cable with a SN/PN, just take first cable found
                 cid = cid_nosn 
-                hca_found  = cid_nosn_hca_fiound  
+                hca_found  = cid_nosn_hca_found  
                 vlog(5, 'Found matching cable c%s without serial' % (cid))
 	
 	if cid is None: #create the cable
@@ -1775,11 +1884,13 @@ def run_parse(dump_dir):
 	#mark all the replaced cables (hope its not more than one...)
 	if replaced_cables:
 	    for rcid in replaced_cables:
-		mark_replaced_cable(
-		    rcid, 
-		    cid, 
-		    'Detected new cable c%s in same physical location' % (cid)
-		)
+                if not rcid in all_replaced_cables:
+                    all_replaced_cables.add(rcid)
+                    mark_replaced_cable(
+                        rcid, 
+                        cid, 
+                        'Detected new cable c%s in same physical location' % (cid)
+                    )
 
 	#record cid in each port to avoid relookup
 	port1['cable_id'] = cid
@@ -1792,7 +1903,9 @@ def run_parse(dump_dir):
 
     #Find any cables that are known but not parsed this time around (aka went dark)
     #ignore any cables in a disabled state
-    missing_cables = []
+    missing_cables = set()
+    disabled_cables = set()
+    removed_cables = set()
     SQL.execute('''
 	    SELECT 
 		cid,
@@ -1801,6 +1914,11 @@ def run_parse(dump_dir):
 		cables
 	''')
     for row in SQL.fetchall():
+        if row['state'] == 'disabled':
+	    disabled_cables.add(int(row['cid'])) 
+	if row['state'] == 'removed':
+	    removed_cables.add(int(row['cid'])) 
+ 
 	if row['cid'] in known_cables:
 	    #cable found, mark it online and when
  	    SQL.execute('''
@@ -1817,9 +1935,9 @@ def run_parse(dump_dir):
 	    ));
  
 	else: #cable not found
-	    if not row['state'] in ['removed', 'disabled']:
+	    if not int(row['cid']) in disabled_cables:
 		#only note cables if they should not be missing
-		missing_cables.append(int(row['cid']))
+		missing_cables.add(int(row['cid']))
 
 	    #Mark cable offline
 	    SQL.execute('''
@@ -1876,6 +1994,7 @@ def run_parse(dump_dir):
 	    else:
 		vlog(3, 'Ignoring missing single port Cable %s' % (cid))
 
+    fabric_disabled = set()
     ticket_issues = []
     for issue in issues:
 	cid = None
@@ -1884,9 +2003,20 @@ def run_parse(dump_dir):
 	for iport in issue['ports']:
 	    if iport and 'cable_id' in iport:
 		cid = iport['cable_id']
+
+	if cid and issue['type'] == 'disabled':
+	    fabric_disabled.add(cid)
  
  	if issue['type'] == 'missing' and cid in hca_cables:
 	    vlog(3, 'ignoring missing cable c%s with an hca' % (cid))
+	    continue
+
+        if issue['type'] in ['missing','disabled'] and cid in removed_cables:
+	    vlog(3, 'ignoring missing removed cable c%s' % (cid))
+	    continue
+
+        if issue['type'] in ['missing','disabled'] and cid in disabled_cables:
+	    vlog(3, 'ignoring missing disabled or removed cable c%s' % (cid))
 	    continue
              
 	vlog(5, 'issue detected: %s' % ([
@@ -1905,12 +2035,28 @@ def run_parse(dump_dir):
 		cid,
 		issue['issue'],
 		issue['raw'],
-		issue['source'],
+		dump_dir,
 		timestamp
 	    )
 	else:
 	    #issues without a known cable will be aggregated into a single ticket
 	    ticket_issues.append(issue['raw'])
+
+    #detect cables that should be disabled but are not any more
+    #print 'fabric disabled: %s' % (fabric_disabled)
+    #print 'expected disabled: %s' % (disabled_cables)
+    for cid in disabled_cables:
+	if not cid in fabric_disabled:
+	    vlog(3, 'Cable that should be disabled found to be enabled c%s' % (cid))
+            add_issue(
+		'enabled',
+		cid,
+		'Atleast one port in cable detected as enabled',
+		'csv state of cable',
+		dump_dir,
+		timestamp
+	    ) 
+	    #enable_cable(cid, 'Cable detected as enabled')
 
     SQL.execute('VACUUM;')
 
@@ -2006,11 +2152,25 @@ def dump_help(full = False):
 		set cable state to watch
 		close Extraview ticket
 
+	mlxdump: 
+	    {0} dump {{path to output directory}}
+	    {0} mlxdump {{path to output directory}}
+
+	    Note: Only works on switches currently
+
+	    Takes following files and puts them into the output directory:
+		3 "mlxdump -d lid-$LID snapshot -m full" snapshots in a row
+		flint -d lid-$LID q
+ 
 	rejuvenate: {0} rejuvenate {{comment}} {{cables}}+ 
 	    Note: only use this if the cable has been replaced and it was not autodetected
 	    release cable
 	    sets the suspected count back to 0
 	    disassociate Extraview ticket from Cable
+
+	replace: {0} replace {{comment}} {{new cable}} {{old cables}}+
+	    marks old cables as replaced by new cable (clones ticket if one exists to new cable)
+	    sets the old cable as removed (disables all future detection against cable)
 
 	remove: {0} remove {{comment}} {{cables}}+ 
 	    Note: only use this if the cable has been removed/replaced permanently
@@ -2154,9 +2314,19 @@ else:
     else:
 	if CMD == 'list':
 	    list_state(argv[2].lower(), argv[3:] if len(argv) > 3 else None)  
+	elif CMD == 'replace':
+            new_cid = None
+            for cid in resolve_cables([argv[3]]):
+                new_cid = cid
+            if new_cid:
+                for cid in resolve_cables(argv[4:]):
+                    mark_replaced_cable(cid, new_cid, argv[2]) 
 	elif CMD == 'remove':
 	    for cid in resolve_cables(argv[3:]):
 		remove_cable(cid, argv[2]) 
+ 	elif CMD == 'mlxdump' or CMD == 'dump':
+	    for cid in resolve_cables(argv[3:]):
+		dump_debug(cid, argv[2]) 
 	elif CMD == 'disable':
 	    for cid in resolve_cables(argv[3:]):
 		disable_cable(cid, argv[2])
