@@ -77,14 +77,14 @@ def set_offline_nodes(nodes, comment):
     nodeset: nodes to offline
     string: comment
     """
-    return run_task("/opt/pbs/default/bin/pbsnodes -o -C %s %s" % (quote(comment), ' '.join(nodes)) )
+    return run_task("/opt/pbs/default/bin/pbsnodes -o %s" % (' '.join(nodes)) )
 
 def set_online_nodes(nodes, comment):
     """ Set nodes online in PBS 
     nodeset: nodes to online
     string: comment
     """
-    return run_task("/opt/pbs/default/bin/pbsnodes -r -C %s %s" % (quote(comment), ' '.join(nodes)) )
+    return run_task("/opt/pbs/default/bin/pbsnodes -r %s" % (' '.join(nodes)) )
            
 def is_pbs_down(states):
     """ Do the PBS Node states mean node is down """
