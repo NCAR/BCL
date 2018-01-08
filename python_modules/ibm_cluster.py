@@ -40,7 +40,7 @@ def get_sm():
     if host == 'jsmgt1':
 	return ['jsufm1', 'jsufm2']
     elif host == 'ysmgt1':
-	return ['ysufm1', 'ysufm2']
+	return ['ysmgt1', 'ysmgt2']
     elif host == 'ermgt1':
 	return ['erufm1', 'erufm2']
     return None                    
