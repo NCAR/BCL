@@ -72,19 +72,26 @@ def node_states():
 #		else: #default to down
 #		    stats[cluster]['nodes']['down'] += 1;
 	   
-def set_offline_nodes(nodes, comment):
+def set_offline_nodes(nodes, comment = None):
     """ Set nodes offline in PBS 
     nodeset: nodes to offline
     string: comment
     """
-    return run_task("/opt/pbs/default/bin/pbsnodes -o %s" % (' '.join(nodes)) )
 
-def set_online_nodes(nodes, comment):
+    if comment:
+	return run_task("/opt/pbs/default/bin/pbsnodes -o -C %s %s" % (quote(comment), ' '.join(nodes)) )
+    else:
+	return run_task("/opt/pbs/default/bin/pbsnodes -o %s" % (' '.join(nodes)) )
+
+def set_online_nodes(nodes, comment = None):
     """ Set nodes online in PBS 
     nodeset: nodes to online
     string: comment
     """
-    return run_task("/opt/pbs/default/bin/pbsnodes -r %s" % (' '.join(nodes)) )
+    if comment:
+	return run_task("/opt/pbs/default/bin/pbsnodes -r -C %s %s" % (quote(comment), ' '.join(nodes)) )
+    else:
+	return run_task("/opt/pbs/default/bin/pbsnodes -r %s" % (' '.join(nodes)) )
            
 def is_pbs_down(states):
     """ Do the PBS Node states mean node is down """
