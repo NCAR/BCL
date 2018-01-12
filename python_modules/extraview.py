@@ -1,4 +1,5 @@
 #!/usr/bin/python
+path.insert(1, "/ssg/bin/python_modules/")
 import argparse
 import requests
 import xml.etree.ElementTree
