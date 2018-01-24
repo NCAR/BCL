@@ -59,6 +59,12 @@ def is_sac():
     else:
 	return False
 
+def get_sac_hostname():
+    if not is_sac():
+        return None
+    else:
+        return socket.gethostname()
+
 def get_ice_info(node):
     m = re.search('^r([0-9]+)i([0-9]+)n([0-9]+)$', node) 
 
