@@ -92,8 +92,13 @@ def get_ice_node_image(node):
 
     #/opt/sgi/sbin/cimage --show-nodes r1i2n1
     #r1i2n1: ice-sles12sp2 4.4.21-69-default tmpfs
-    return out.split()[1]
-    
+    sp = out.split()
+    vlog(5, "%s Images: %s" % (node, sp))
+    if len(sp) > 1:
+	return sp[1]
+    else:
+	vlog(1, 'invalid response from cimage: %s' % (out))
+	return None
  
 def get_ice_switch_info(node):
     m = re.search('^r([0-9]+)i([0-9]+)s([0-9]+)(-bmc|)$', node) 
