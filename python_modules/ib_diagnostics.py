@@ -552,14 +552,15 @@ def parse_ibdiagnet ( ports, issues, contents ):
 			       str(cmatch.group('counter')) in [ 
 				   #ignored congestion counters  in general
 				   'port_rcv_switch_relay_errors', 
-				   'port_xmit_discard' 
+				   'port_xmit_discard',
+				   'port_rcv_remote_physical_errors' #mlnx will not honor these as symbol errors should catch issue
 			       ] or
 			       ( #ignore reconnects for HCAs since they happen often for node crashes
 				   cmatch.group('counter') == 'link_down_counter' and int(cmatch.group('value')) < 3
 			       )  or
 			       ( #ignore small numbers of corruption errors
-				   str(cmatch.group('counter')) in [ 'port_rcv_errors', 'symbol_error_counter', 'port_rcv_remote_physical_errors', 'vl15_dropped' ] and
-				   int(cmatch.group('value')) < 15
+				   str(cmatch.group('counter')) in [ 'port_rcv_errors', 'symbol_error_counter' ] and
+				   int(cmatch.group('value')) < 100
 			       )   or
 			       ( #ignore small numbers of control errors
 				   str(cmatch.group('counter')) in [ 'vl15_dropped' ] and
