@@ -278,6 +278,7 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 			    'HELP_HOSTNAME', 
 			    cluster_info.get_cluster_name_formal()
 			),
+			'HELP_HOSTNAME_CATEGORY': EV.get_field_value_to_field_key('HELP_HOSTNAME_CATEGORY', 'Supercomputer'),
 			'HELP_HOSTNAME_OTHER': cname
 		})
 		vlog(3, 'Opened Extraview Ticket %s for bad cable %s' % (tid, cid))
