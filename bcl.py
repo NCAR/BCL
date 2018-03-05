@@ -1032,9 +1032,7 @@ def dump_debug(cid, output_path):
 			    shutil.copytree(src, cpp, False)
 
 def send_casg(cid, comment):
-    """ disable cable and send ticket to CASG """
-    disable_cable(cid, comment)
-
+    """ send ticket to CASG """
     tid = None
     length = None
     SN = None
@@ -2215,7 +2213,6 @@ def dump_help(full = False):
 	    puts a cable in disabled state back into suspect state (use release to set cable state to watch)
      
 	casg: {0} casg {{comment}} {{cables}}+ 
-	    disables cable in fabric
 	    send extraview ticket to CASG
 
 	query: {0} query {{cables}}+ 
@@ -2320,7 +2317,6 @@ def dump_help(full = False):
 	    enables cable in fabric
      
 	casg: {0} casg {{comment}} {{cables}}+ 
-	    disables cable in fabric
 	    send extraview ticket to CASG
 
 	query: {0} query {{cables}}+ 
