@@ -431,6 +431,7 @@ def resolve_cables(user_input):
     if not user_input:
 	return [ None ]
 
+
     state_match = re.compile(
 	r"""
 	    ^\s*@(?:bad:|)(?P<state>\w+)\s*$
@@ -438,45 +439,46 @@ def resolve_cables(user_input):
 	re.VERBOSE
 	) 
 
-    for needle in user_input:
-	match = state_match.match(needle)
-	if match:
-	    state = match.group('state').lower()
-	    if state == 'online' or state == 'offline':
- 		SQL.execute('''
-		    SELECT 
-			cid
-		    FROM 
-			cables
-		    WHERE
-			online = ?
-		''',(
-		    1 if (state == 'online') else 0,
-		))
-	    else:
-		SQL.execute('''
-		    SELECT 
-			cid
-		    FROM 
-			cables
-		    WHERE
-			state = ?
-		''',(
-		    state,
-		))
+    for uneedle in user_input:
+	for needle in uneedle.split(','):
+	    match = state_match.match(needle)
+	    if match:
+		state = match.group('state').lower()
+		if state == 'online' or state == 'offline':
+		    SQL.execute('''
+			SELECT 
+			    cid
+			FROM 
+			    cables
+			WHERE
+			    online = ?
+		    ''',(
+			1 if (state == 'online') else 0,
+		    ))
+		else:
+		    SQL.execute('''
+			SELECT 
+			    cid
+			FROM 
+			    cables
+			WHERE
+			    state = ?
+		    ''',(
+			state,
+		    ))
 
-	    for row in SQL.fetchall():
-		if row['cid'] and not row['cid'] in cids:
-		    cids.append(row['cid'])
-	else:
-	    cret = resolve_cable(needle)
-	    vlog(4, 'resolving %s to %s' %(needle, cret))
-
-	    if cret:
-		if not cret['cid'] in cids:
-		    cids.append(cret['cid'])
+		for row in SQL.fetchall():
+		    if row['cid'] and not row['cid'] in cids:
+			cids.append(row['cid'])
 	    else:
-		vlog(2, 'unable to resolve %s to a known cable or port' % (needle))
+		cret = resolve_cable(needle)
+		vlog(4, 'resolving %s to %s' %(needle, cret))
+
+		if cret:
+		    if not cret['cid'] in cids:
+			cids.append(cret['cid'])
+		else:
+		    vlog(2, 'unable to resolve %s to a known cable or port' % (needle))
 
     return cids
 
@@ -1101,7 +1103,7 @@ def send_casg(cid, comment):
 
 		%s
 
-		Please verify that the cable ports are dark before repairing cable or return ticket noting the cables are not disabled.
+		Please verify that the cable ports are dark before physically repairing cable.
 		If there are any questions or issues, please return this ticket to SSG with details.
 	    ''' % (
 		    suspected,
@@ -2274,7 +2276,7 @@ def dump_help(full = False):
 	    generates issues against errors found 
 	    checks if any cable has been replaced (new SN) and will set that cable back to watch state
 
-	Cable Labels Types: (aka {{cables}}+)
+	{{cables}}+: Cable Labels Types (comma or space delimited)
 	    cable id: c#
 	    ticket id: t#
 	    guid/port pairs: S{{guid}}/P{{port}}
