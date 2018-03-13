@@ -35,6 +35,13 @@ def initialize_db():
 
     SQL.executescript("""
 	PRAGMA foreign_keys = ON;
+	PRAGMA journal_mode = WAL;
+    """)
+ 
+    return;
+
+    SQL.executescript("""
+	PRAGMA foreign_keys = ON;
 
  	create table if not exists cables (
 	    cid INTEGER PRIMARY KEY AUTOINCREMENT,
