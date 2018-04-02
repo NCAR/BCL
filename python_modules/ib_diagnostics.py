@@ -565,8 +565,18 @@ def parse_ibdiagnet ( ports, issues, contents ):
 			       ( #ignore small numbers of control errors
 				   str(cmatch.group('counter')) in [ 'vl15_dropped' ] and
 				   int(cmatch.group('value')) < 100
-			       )  
-
+			       )   or
+			       ( #ignore small numbers of errors per tomk
+				   str(cmatch.group('counter')) in [ 
+				       'error_detection_counter_lane1',
+				       'error_detection_counter_lane2',
+				       'error_detection_counter_lane3',
+				       'unknown_block_cnt',
+				       'sync_header_err_cnt',
+				       'link_error_recovery_counter'
+				   ] and
+				   int(cmatch.group('value')) < 7
+			       ) 
 			  ):
 			       vlog(4, 'ignoring counter %s with %s' % (cmatch.group('counter'), cmatch.group('value')))
 		       else:
