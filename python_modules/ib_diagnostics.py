@@ -568,6 +568,7 @@ def parse_ibdiagnet ( ports, issues, contents ):
 			       )   or
 			       ( #ignore small numbers of errors per tomk
 				   str(cmatch.group('counter')) in [ 
+				       'error_detection_counter_lane0',
 				       'error_detection_counter_lane1',
 				       'error_detection_counter_lane2',
 				       'error_detection_counter_lane3',
