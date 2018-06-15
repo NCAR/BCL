@@ -53,7 +53,7 @@ def command(nodeset, command):
 		vlog(4, 'calling bcmd on localhost: %s' % cmd)
 	        task.shell(
 		    cmd, 
-		    timeout=30,  
+		    timeout=120,  
 		    handler=__OutputHandler(node, output)
 		) 
 	    else:
@@ -62,7 +62,7 @@ def command(nodeset, command):
 		task.shell(
 		    cmd,
 		    nodes=lead, 
-		    timeout=30,  
+		    timeout=120,  
 		    handler=__OutputHandler(node, output)
 		)
 
