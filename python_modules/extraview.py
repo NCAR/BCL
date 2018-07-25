@@ -32,7 +32,11 @@ class client:
 	    }
 	_params.update(params)
 	 
-	return requests.get(self.url, params=_params)
+	result = requests.get(self.url, params=_params)
+	vlog(4, 'extraview http get: %s -> %s' % (result.url, result.status_code))
+	vlog(5, 'extraview http get result:  %s' % (result.text))
+	return result
+
     def http_get_xml(self, params):
 	""" Perform a get request against extraview that will return XML format
 	    return request object
