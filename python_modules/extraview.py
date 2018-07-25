@@ -59,7 +59,8 @@ class client:
 	    data = {}
 	    for line in result.splitlines():
 		fields = line.split(':')
-		data[fields[0]] = fields[1]
+		if len(fields) > 2:
+		    data[fields[0]] = fields[1]
 	    return data
 	else:
 	    return None
@@ -236,6 +237,9 @@ class client:
 
 	if user:
 	    user = self.get_group_member(group, user);
+	    if user is None:
+		vlog(1, 'Unable to resolve {}/{} to user'.format(group, user))
+		return None
 
 	if grpid is None:
 	    return None
