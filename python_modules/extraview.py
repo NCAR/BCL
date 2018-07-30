@@ -61,9 +61,9 @@ class client:
 	"""
 	if len(result) > 0:
 	    data = {}
-	    for line in result.splitlines():
+	    for line in result.splitlines(False):
 		fields = line.split(':')
-		if len(fields) > 2:
+		if len(fields) > 1:
 		    data[fields[0]] = fields[1]
 	    return data
 	else:
@@ -92,6 +92,7 @@ class client:
 	    params['parent_val'] = parentvalue;
 
 	values = self.split_results(self.http_get(params).text)
+	vlog(7, 'get_field_allowed: %s' % (values))
 
 	if parentfield is None:
 	    self.fields_cache[field] = values
@@ -114,10 +115,12 @@ class client:
 	 """
 
          fields = self.get_field_allowed(field, parentfield, parentvalue)
+	 vlog(6, 'find field %s parent %s: %s' % (field, parentfield, fields))
 	 for efield, evalue in fields.iteritems():
 	     if evalue.lower() == value.lower():
 		 return efield
 
+	 vlog(4, 'Unable to find field %s parent %s with value %s' % (field, parentfield, value))
 	 return None
 
 
@@ -129,6 +132,7 @@ class client:
 	""" Get Groups Members from an Extraview group """
         id = self.get_group_id(group)
 	if id is None: 
+	    vlog(4, 'Unable to find group id for %s' % (group))
 	    return None
 
         return self.get_field_allowed('ASSIGNED_TO', 'HELP_ASSIGN_GROUP', id)
@@ -148,6 +152,7 @@ class client:
 
 	members = self.get_group_members(group)
 	if members is None or user is None:
+	    vlog(4, 'Unable to find group members for %s' % (group))
 	    return None
 
 	for member, name in members.iteritems():
@@ -157,6 +162,7 @@ class client:
 	if allow_nonmember:
 	    return user
 	else:
+	    vlog(4, 'Unable to find group member %s for %s' % (user, group))
 	    return None
 
     def create(self, originator, group, user, title, description, fields = {}):
