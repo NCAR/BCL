@@ -41,7 +41,10 @@ def pull_opensm_files ( local_path, remote_path ):
         np=os.path.join(local_path, os.path.basename(rp))
         mp=os.path.join(local_path, '%s.%s' % (os.path.basename(rp), SM))
         vlog(6, 'Unmangling %s -> %s' % (mp, np))
-        os.rename(mp, np)
+	try:
+	    os.rename(mp, np)
+	except:
+	    vlog(6, 'Unmangling %s -> %s failed' % (mp, np))
     
 def exec_opensm_to_string ( cmd, primary_only = False, timeout = 300  ):
     """ Runs cmd on openSM host and places Return Value, STDOUT, STDERR into returned list  """
