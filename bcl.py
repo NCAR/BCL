@@ -1,6 +1,7 @@
 #!/usr/bin/python
 from sys import path, argv, stderr
-path.append("/ssg/bin/python_modules/")
+path.insert(1,"/ssg/bin/python_modules/")
+path.insert(1,"/opt/clush/1.8/lib/python2.7/site-packages/ClusterShell-1.8.1-py2.7.egg")
 import extraview_cli
 import nfile
 from nlog import vlog,die_now
@@ -2347,7 +2348,7 @@ BAD_CABLE_DB='/etc/ncar_bad_cable_list.sqlite'
 
 DISABLE_PORT_STATE_CHANGE=False
 DISABLE_BISECT_DETECT=False
-DISABLE_TICKETS=False
+DISABLE_TICKETS=True
 EV = None
 syslog.openlog('bcl.py')
 
