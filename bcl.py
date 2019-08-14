@@ -2214,23 +2214,23 @@ def dump_help(full = False):
 		add cable to bad node list 
 		open EV against node in SSG queue or Assign to SSG queue
 
-	disable: {0} disable 'comment' {{cables}}+ 
+	disable: {0} disable '{{comment}}' {{cables}}+ 
 	    disables cable in fabric
 	    add cable to bad cable list (if not one already)
 
-	enable: {0} enable 'comment' {{cables}}+ 
+	enable: {0} enable '{{comment}}' {{cables}}+ 
 	    enables cable in fabric
 	    puts a cable in disabled state back into suspect state (use release to set cable state to watch)
      
-	casg: {0} casg {{comment}} {{cables}}+ 
+	casg: {0} casg '{{comment}}' {{cables}}+ 
 	    send extraview ticket to CASG
 
 	query: {0} query {{cables}}+ 
 	    Query cables status in fabric
      
 	release: 
-	    {0} release {{comment}} {{cables}}+ 
-	    {0} resolve {{comment}} {{cables}}+ 
+	    {0} release '{{comment}}' {{cables}}+ 
+	    {0} resolve '{{comment}}' {{cables}}+ 
 		enable cable in fabric
 		set cable state to watch
 		close Extraview ticket
@@ -2245,17 +2245,17 @@ def dump_help(full = False):
 		3 "mlxdump -d lid-$LID snapshot -m full" snapshots in a row
 		flint -d lid-$LID q
  
-	rejuvenate: {0} rejuvenate {{comment}} {{cables}}+ 
+	rejuvenate: {0} rejuvenate '{{comment}}' {{cables}}+ 
 	    Note: only use this if the cable has been replaced and it was not autodetected
 	    release cable
 	    sets the suspected count back to 0
 	    disassociate Extraview ticket from Cable
 
-	replace: {0} replace {{comment}} {{new cable}} {{old cables}}+
+	replace: {0} replace '{{comment}}' {{new cable}} {{old cables}}+
 	    marks old cables as replaced by new cable (clones ticket if one exists to new cable)
 	    sets the old cable as removed (disables all future detection against cable)
 
-	remove: {0} remove {{comment}} {{cables}}+ 
+	remove: {0} remove '{{comment}}' {{cables}}+ 
 	    Note: only use this if the cable has been removed/replaced permanently
 	    release cable
 	    sets the cable as removed (disables all future detection against cable)
@@ -2266,14 +2266,14 @@ def dump_help(full = False):
  	port_plabel: {0} cable_plabel {{physical label}} {{cable ports}}+ 
 	    Assign cable port new physical label. (label can be an empty string to use logical label)
  
-	comment: {0} comment {{comment}} {{cables}}+ 
+	comment: {0} comment '{{comment}}' {{cables}}+ 
 	    add comment to bad cable's extraview ticket 
 
-	ignore: {0} ignore {{comment}} {{(issue id) i#}}+
+	ignore: {0} ignore '{{comment}}' {{(issue id) i#}}+
 	    Note: only use this in special cases for issues that can not be fixed
 	    ignore issue with assigned cable until honor requested
 
-	honor: {0} honor {{comment}} {{(issue id) i#}}+
+	honor: {0} honor '{{comment}}' {{(issue id) i#}}+
 	    removes ignore status of issue
 
  	inventory: {0} inventory 
