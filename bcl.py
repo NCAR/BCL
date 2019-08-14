@@ -129,6 +129,83 @@ def release_db():
     sqlite.close(SQL_CONNECTION, SQL)
     vlog(5, 'released db')
 
+def open_ticket(cid):
+    """Open an EV ticket for a cable"""
+    global EV
+
+    tid = None
+
+    SQL.execute('''
+        SELECT 
+            cables.cid,
+            cables.state,
+            cables.suspected,
+            cables.ticket,
+            cp1.flabel as cp1_flabel,
+            cp2.flabel as cp2_flabel
+        FROM 
+            cables
+
+        INNER JOIN
+            cable_ports as cp1
+        ON
+            cables.cid = ? and
+            cables.cid = cp1.cid
+
+        LEFT OUTER JOIN
+            cable_ports as cp2
+        ON
+            cables.cid = cp2.cid and
+            cp1.cpid != cp2.cpid
+             
+        LIMIT 1
+    ''',(
+        cid,
+    ))
+
+    for row in SQL.fetchall():
+        cname = None
+        if row['cp2_flabel']:
+            cname = '%s <--> %s ' % (row['cp1_flabel'],row['cp2_flabel'])
+        else:
+            cname = row['cp1_flabel']
+
+        tid = row['ticket'] 
+
+        if tid is None:
+
+            tid = EV.create( 
+                'ssgev',
+                'ssg',
+                'ssgev',
+                '%s: Repair IB Cable %s' % (cluster_info.get_cluster_name_formal(), cname), 
+                'Please repair IB cable %s on %s.' % (
+                    cname, 
+                    cluster_info.get_cluster_name_formal()
+                ), { 
+                    'HELP_LOCATION': EV.get_field_value_to_field_key('HELP_LOCATION', 'NWSC'),
+                    'HELP_HOSTNAME': EV.get_field_value_to_field_key(
+                    'HELP_HOSTNAME', 
+                    cluster_info.get_cluster_name_formal()
+                    ),
+               'HELP_HOSTNAME_CATEGORY': EV.get_field_value_to_field_key('HELP_HOSTNAME_CATEGORY',
+                   'Supercomputer'),
+               'HELP_HOSTNAME_OTHER': cid
+            })
+            SQL.execute('''
+               UPDATE
+                   cables
+                SET
+                    ticket = ?
+                WHERE
+                    cid = ?
+                ;''', 
+                (tid,cid)
+            )
+            vlog(3, 'Opened Extraview Ticket %s for bad cable c%s' % (tid, cid))
+        else:
+            vlog(1, 'Ticket %s already open for cable c%s' % (tid, cid))
+
 def add_issue(issue_type, cid, issue, raw, source, timestamp):
     """ Add issue to issues list """
     global EV
@@ -1082,46 +1159,47 @@ def send_casg(cid, comment):
 	vlog(1, 'Cable c%s does not have an associated Extraview Ticket. Refusing to send non-existant ticket to casg' % (cid))
 	return False
 
-    #EV.assign_group(tid, 'casg', None, {
-    if not DISABLE_TICKETS:
-	vlog(3, 'Sent Ticket %s to CASG' % (tid))
+    #if not DISABLE_TICKETS:
+    vlog(3, 'Sent Ticket %s to CASG' % (tid))
 
-	#provide physical label if one is known
-	if plabel:
-	    label = 'Physical Cable Label: %s\nSoftware Cable Label: %s' % (plabel, flabel)
-	else:
- 	    label = 'Cable Label: %s' % (flabel)
+    #provide physical label if one is known
+    if plabel:
+        label = 'Physical Cable Label: %s\nSoftware Cable Label: %s' % (plabel, flabel)
+    else:
+        label = 'Cable Label: %s' % (flabel)
 
-	EV.assign_group(tid, 'casg', None, {
-	    'COMMENTS':	'''
-		CASG,
+    EV.assign_group(tid, 'casg', None, {
+        'COMMENTS':	'''
+            CASG,
 
-		The follow cable has been marked for repairs following:
+            The follow cable has been marked for repairs following:
 
-		    https://wiki.ucar.edu/display/ssg/Infiniband+Cable+Repair
+	    https://wiki.ucar.edu/display/ssg/Infiniband+Cable+Repair
 
-		This cable has had %s events that required repair to date.
+            This cable has had %s events that required repair to date.
 
-		%s
-		Length: %s
-		Serial: %s
-		Product Number: %s
+            %s
 
-		SSG Request:
+            Length: %s
+            Serial: %s
+            Product Number: %s
 
-		%s
+            SSG Request:
 
-		Please verify that the cable ports are dark before physically repairing cable.
-		If there are any questions or issues, please return this ticket to SSG with details.
-	    ''' % (
-		    suspected,
-		    label,
-		    length if length else 'Unknown',
-		    SN if SN else 'Unknown',
-		    PN if PN else 'Unknown',
-		    comment
-	    )
-	});
+            %s
+
+            Please verify that the cable ports are dark before physically repairing cable.
+            If there are any questions or issues, please return this ticket to SSG with details.
+        ''' % 
+        (
+	    suspected,
+	    label,
+	    length if length else 'Unknown',
+	    SN if SN else 'Unknown',
+	    PN if PN else 'Unknown',
+	    comment
+	)
+    });
      
 def dump_inventory():
     """ Dumps inventory """
@@ -2221,6 +2299,9 @@ def dump_help(full = False):
 	enable: {0} enable '{{comment}}' {{cables}}+ 
 	    enables cable in fabric
 	    puts a cable in disabled state back into suspect state (use release to set cable state to watch)
+
+        open_ticket: {0} open_ticket {{cables}}+
+            Open a repair ticket assigned to SSG for cable
      
 	casg: {0} casg '{{comment}}' {{cables}}+ 
 	    send extraview ticket to CASG
@@ -2320,23 +2401,26 @@ def dump_help(full = False):
 	list: {0} list 
 	    dump list of actionable cable issues
 
-	disable: {0} disable 'comment' {{cables}}+ 
+	disable: {0} disable '{{comment}}' {{cables}}+ 
 	    disables cable in fabric
 
-	enable: {0} enable 'comment' {{cables}}+ 
+	enable: {0} enable '{{comment}}' {{cables}}+ 
 	    enables cable in fabric
      
-	casg: {0} casg {{comment}} {{cables}}+ 
+        open_ticket: {0} open_ticket {{cables}}+
+            Open a repair ticket assigned to SSG for cable
+
+	casg: {0} casg '{{comment}}' {{cables}}+ 
 	    send extraview ticket to CASG
 
 	query: {0} query {{cables}}+ 
 	    Query cables status in fabric (ibportstate query output)
      
-	release: {0} release {{comment}} {{cables}}+ 
+	release: {0} release '{{comment}}' {{cables}}+ 
 		enable cable in fabric and set cable state to watch
 		close Extraview ticket
 
-	comment: {0} comment {{comment}} {{cables}}+ 
+	comment: {0} comment '{{comment}}' {{cables}}+ 
 	    add comment to bad cable's extraview ticket 
 	\n""".format(argv[0]))
 
@@ -2445,6 +2529,9 @@ else:
 	elif CMD == 'comment':
 	    for cid in resolve_cables(argv[3:]):
 		comment_cable(cid, argv[2]) 
+        elif CMD == 'open_ticket':
+            for cid in resolve_cables(argv[2:]):
+                open_ticket(cid)
         else:
 	    dump_help() 
 
