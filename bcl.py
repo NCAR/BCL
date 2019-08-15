@@ -177,7 +177,7 @@ def open_ticket(cid):
             tid = EV.create( 
                 'ssgev',
                 'ssg',
-                'ssgev',
+                '',
                 '%s: Repair IB Cable %s' % (cluster_info.get_cluster_name_formal(), cname), 
                 'Please repair IB cable %s on %s.' % (
                     cname, 
