@@ -2432,7 +2432,7 @@ BAD_CABLE_DB='/etc/ncar_bad_cable_list.sqlite'
 
 DISABLE_PORT_STATE_CHANGE=False
 DISABLE_BISECT_DETECT=False
-DISABLE_TICKETS=True
+DISABLE_TICKETS=False
 EV = None
 syslog.openlog('bcl.py')
 
