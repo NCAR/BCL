@@ -347,34 +347,35 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 	tid = row['ticket'] 
              
 	if row['state'] == 'watch':
-	    #cable was only being watched. send it to suspect
-	    if tid is None and not DISABLE_TICKETS: 
-		tid = EV.create( 
-		    'ssgev',
-		    'ssg',
-		    '',
-		    '%s: Bad Cable %s' % (cluster_info.get_cluster_name_formal(), cname), 
-		    '%s has been added to the %s bad cable list.' % (
-			cname, 
-			cluster_info.get_cluster_name_formal()
-		    ), { 
-			'HELP_LOCATION': EV.get_field_value_to_field_key('HELP_LOCATION', 'NWSC'),
-			'HELP_HOSTNAME': EV.get_field_value_to_field_key(
-			    'HELP_HOSTNAME', 
-			    cluster_info.get_cluster_name_formal()
-			),
-			'HELP_HOSTNAME_CATEGORY': EV.get_field_value_to_field_key('HELP_HOSTNAME_CATEGORY', 'Supercomputer'),
-			'HELP_HOSTNAME_OTHER': cname
-		})
-		vlog(3, 'Opened Extraview Ticket %s for bad cable %s' % (tid, cid))
-	    elif not DISABLE_TICKETS: 
-		EV.assign_group(tid, 'ssg', None, {
-		    'COMMENTS':	'''
-			Ticket has been reopened for repeat offender bad cable.
-
-			Offense: %s
-		    ''' % (suspected)
-		});
+#           JMT: We don't want add_issue to automatically create tickets 2019-09-04 
+#	    #cable was only being watched. send it to suspect
+#	    if tid is None and not DISABLE_TICKETS: 
+#		tid = EV.create( 
+#		    'ssgev',
+#		    'ssg',
+#		    '',
+#		    '%s: Bad Cable %s' % (cluster_info.get_cluster_name_formal(), cname), 
+#		    '%s has been added to the %s bad cable list.' % (
+#			cname, 
+#			cluster_info.get_cluster_name_formal()
+#		    ), { 
+#			'HELP_LOCATION': EV.get_field_value_to_field_key('HELP_LOCATION', 'NWSC'),
+#			'HELP_HOSTNAME': EV.get_field_value_to_field_key(
+#			    'HELP_HOSTNAME', 
+#			    cluster_info.get_cluster_name_formal()
+#			),
+#			'HELP_HOSTNAME_CATEGORY': EV.get_field_value_to_field_key('HELP_HOSTNAME_CATEGORY', 'Supercomputer'),
+#			'HELP_HOSTNAME_OTHER': cname
+#		})
+#		vlog(3, 'Opened Extraview Ticket %s for bad cable %s' % (tid, cid))
+#	    elif not DISABLE_TICKETS: 
+#		EV.assign_group(tid, 'ssg', None, {
+#		    'COMMENTS':	'''
+#			Ticket has been reopened for repeat offender bad cable.
+#
+#			Offense: %s
+#		    ''' % (suspected)
+#		});
 
 	    SQL.execute('''
 		UPDATE
@@ -851,10 +852,14 @@ def comment_cable(cid, comment):
 		cid
 	));
 
-	if row['ticket'] and not DISABLE_TICKETS:
-	    EV.add_resolver_comment(row['ticket'], 'Bad Cable Comment:\n%s' % comment)
-	    vlog(3, 'Updated Extraview Ticket %s for c%s with comment: %s' % (row['ticket'], cid, comment))
+#	if row['ticket'] and not DISABLE_TICKETS:
+#	    EV.add_resolver_comment(row['ticket'], 'Bad Cable Comment:\n%s' % comment)
+#	    vlog(3, 'Updated Extraview Ticket %s for c%s with comment: %s' % (row['ticket'], cid, comment))
 
+        if row['ticket'] and not DISABLE_TICKETS:
+                if '17714' in EV.get_field_value_to_field_key('HELP_ASSIGN_GROUP', 'casg'):
+                        EV.add_resolver_comment(row['ticket'], 'Bad Cable Comment:\n%s' % comment)
+                        vlog(3, 'Updated Extraview Ticket %s for c%s with comment: %s' % (row['ticket'], cid, comment))
 
 def enable_cable_ports(cid):
     """ Enables cable ports in fabric """
@@ -2222,45 +2227,46 @@ def run_parse(dump_dir):
 
     SQL.execute('VACUUM;')
 
-    #create ticket if are non cable issues
-    if ticket_issues and not DISABLE_TICKETS:
-	tid = EV.create( 
-	    'ssgev',
-	    'ssg',
-	    None,
-	    '%s: Infiniband Issues' % (cluster_info.get_cluster_name_formal()), 
-	    '''
-	    %s issues have been detected against the Infinband fabric for %s.
-
-	    Raw Data: %s
-	    ''' % (
-		len(ticket_issues),
-		cluster_info.get_cluster_name_formal(),
-		dump_dir
-	    ), { 
-		'HELP_LOCATION': EV.get_field_value_to_field_key('HELP_LOCATION', 'NWSC'),
-		'HELP_HOSTNAME': EV.get_field_value_to_field_key(
-		    'HELP_HOSTNAME', 
-		    cluster_info.get_cluster_name_formal()
-		),
-		'HELP_HOSTNAME_OTHER': 'Infiniband Fabric'
-	}) 
-
-	vlog(3, 'Created Ticket %s against fabric issues' % (tid))
-
-	#combine the issues and try to not crash EV
-	i = 0
-	buf = ''
-	for msg in ticket_issues:
-	    buf += msg + "\n"
-	    i += 1
-
-	    if i == 200: #magic guessed number that EV can take
-		EV.add_resolver_comment(tid, buf)
-		buf = ''
-		i = 0
-	if buf != '':
-	    EV.add_resolver_comment(tid, buf)
+#    JMT: Commenting out for now 2019-09-05
+#    #create ticket if there are non cable issues
+#    if ticket_issues and not DISABLE_TICKETS:
+#	tid = EV.create( 
+#	    'ssgev',
+#	    'ssg',
+#	    None,
+#	    '%s: Infiniband Issues' % (cluster_info.get_cluster_name_formal()), 
+#	    '''
+#	    %s issues have been detected against the Infinband fabric for %s.
+#
+#	    Raw Data: %s
+#	    ''' % (
+#		len(ticket_issues),
+#		cluster_info.get_cluster_name_formal(),
+#		dump_dir
+#	    ), { 
+#		'HELP_LOCATION': EV.get_field_value_to_field_key('HELP_LOCATION', 'NWSC'),
+#		'HELP_HOSTNAME': EV.get_field_value_to_field_key(
+#		    'HELP_HOSTNAME', 
+#		    cluster_info.get_cluster_name_formal()
+#		),
+#		'HELP_HOSTNAME_OTHER': 'Infiniband Fabric'
+#	}) 
+#
+#	vlog(3, 'Created Ticket %s against fabric issues' % (tid))
+#
+#	#combine the issues and try to not crash EV
+#	i = 0
+#	buf = ''
+#	for msg in ticket_issues:
+#	    buf += msg + "\n"
+#	    i += 1
+#
+#	    if i == 200: #magic guessed number that EV can take
+#		EV.add_resolver_comment(tid, buf)
+#		buf = ''
+#		i = 0
+#	if buf != '':
+#	    EV.add_resolver_comment(tid, buf)
 
 
 def dump_help(full = False):
