@@ -204,7 +204,11 @@ def open_ticket(cid):
             )
             vlog(3, 'Opened Extraview Ticket %s for bad cable c%s' % (tid, cid))
         else:
-            vlog(1, 'Ticket %s already open for cable c%s' % (tid, cid))
+	    if 'CLOSED' in EV.get_ticket_status(tid):
+               EV.assign_group(tid,'ssg')
+               vlog(1, 'Reopened ticket %s for cable c%s' % (tid, cid))
+            else:
+               vlog(1, 'Ticket %s already open for cable c%s' % (tid, cid))
 
 def add_issue(issue_type, cid, issue, raw, source, timestamp):
     """ Add issue to issues list """
@@ -856,10 +860,11 @@ def comment_cable(cid, comment):
 #	    EV.add_resolver_comment(row['ticket'], 'Bad Cable Comment:\n%s' % comment)
 #	    vlog(3, 'Updated Extraview Ticket %s for c%s with comment: %s' % (row['ticket'], cid, comment))
 
-        if row['ticket'] and not DISABLE_TICKETS:
-                if '17714' in EV.get_field_value_to_field_key('HELP_ASSIGN_GROUP', 'casg'):
-                        EV.add_resolver_comment(row['ticket'], 'Bad Cable Comment:\n%s' % comment)
-                        vlog(3, 'Updated Extraview Ticket %s for c%s with comment: %s' % (row['ticket'], cid, comment))
+    if row['ticket'] and not DISABLE_TICKETS:
+       if 'CASG' in EV.get_transferred_group(row['ticket']):
+          if 'CLOSED' not in EV.get_ticket_status(row['ticket']):
+             EV.add_resolver_comment(row['ticket'], 'Bad Cable Comment:\n%s' % comment)
+             vlog(3, 'Updated Extraview Ticket %s for c%s with comment: %s' % (row['ticket'], cid, comment))
 
 def enable_cable_ports(cid):
     """ Enables cable ports in fabric """
@@ -2307,7 +2312,9 @@ def dump_help(full = False):
 	    puts a cable in disabled state back into suspect state (use release to set cable state to watch)
 
         open_ticket: {0} open_ticket {{cables}}+
-            Open a repair ticket assigned to SSG for cable
+            Open a repair ticket assigned to SSG for cable.
+            If a closed ticket is already associated with this cable,
+            it'll reopen the ticket.
      
 	casg: {0} casg '{{comment}}' {{cables}}+ 
 	    send extraview ticket to CASG
