@@ -165,6 +165,31 @@ class client:
 	    vlog(4, 'Unable to find group member %s for %s' % (user, group))
 	    return None
 
+    def get_transferred_group(self, ticket):
+    	params = {
+            'statevar': 'get_fields',
+            'id': ticket,
+            'HELP_ASSIGN_GROUP': '1',
+            }
+        return self.http_get(params).text
+ 
+    def get_assigned_to(self, ticket):
+        params = {
+            'statevar': 'get_fields',
+            'id': ticket,
+            'assigned_to': '1',
+            }
+        return self.http_get(params).text
+
+    def get_ticket_status(self, ticket):
+        params = {
+           'statevar': 'get_fields',
+           'id': ticket,
+           'status': '1',
+           }
+        return self.http_get(params).text
+
+
     def create(self, originator, group, user, title, description, fields = {}):
 	"""
 	@brief Create new Extraview Issue (aka ticket)
