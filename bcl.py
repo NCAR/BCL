@@ -350,7 +350,7 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 	    cname = row['cp1_flabel']
 	tid = row['ticket'] 
              
-	if row['state'] == 'watch':
+	if row['state'] == 'suspect':
 #           JMT: We don't want add_issue to automatically create tickets 2019-09-04 
 #	    #cable was only being watched. send it to suspect
 #	    if tid is None and not DISABLE_TICKETS: 
@@ -381,6 +381,13 @@ def add_issue(issue_type, cid, issue, raw, source, timestamp):
 #		    ''' % (suspected)
 #		});
 
+            if row['ticket'] and not DISABLE_TICKETS:
+               if 'CASG' in EV.get_transferred_group(row['ticket']):
+                  if 'CLOSED' not in EV.get_ticket_status(row['ticket']):
+                     EV.add_resolver_comment(row['ticket'], 'Bad Cable Comment:\n%s' % raw)
+                     vlog(3, 'Updated Extraview Ticket %s for c%s with comment: %s' % (row['ticket'], cid, raw))
+
+	if row['state'] == "watch": 
 	    SQL.execute('''
 		UPDATE
 		    cables 
