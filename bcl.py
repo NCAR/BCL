@@ -1509,12 +1509,15 @@ def list_state(what, list_filter):
 		    int(row['mtime']) if row['mtime'] else None,
 		))
 
+                count=0;
 		for irow in SQL.fetchall():
+                    count=count+1
 		    print '\tIssue %s %s: %s' % (
 			    'i%s' % irow['iid'],
 			    irow['source'],
 			    irow['issue']
 			) 
+                print '\tNumber of Issues: %d' % (count)
 
 		print ' '
 
