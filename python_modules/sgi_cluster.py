@@ -150,7 +150,7 @@ def get_sm():
     if host == 'lamgt':
 	return ['r1lead']
     elif host == 'chmgt':
-	return ['r1lead', 'r2lead']
+	return ['r2lead', 'r1lead']
     return None
 
 def get_ib_speed():
