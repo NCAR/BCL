@@ -424,7 +424,7 @@ def parse_sgi_ibcv2 ( ports, issues, contents ):
 	    |
 	    NOT\ FOUND:\s*(?P<missingi>\S+)\s*INTERNAL\ port\ (?P<missingip1>\d+)\ to\ (?P<missingip2>\d+)
             |
-	    NOT\ FOUND:\s*(?P<missing1>\S+)\s*(?P<missing2>\S+|)
+	    NOT\ FOUND:\s*(?P<missing1>\S+)\s*(?P<missing2>\S+)
 	    |
 	    FOUND:\s*(?P<found1>\S+)\s*<-*>\s*(?P<found2>\S+)
 	)

@@ -28,13 +28,10 @@ def run_task(cmd):
 def node_states():
     """ Query Node states from PBS """
     statesjson = run_task("/opt/pbs/default/bin/pbsnodes -av -Fjson")
-
     if statesjson is None:
 	return None
-
     state = json.loads(statesjson)
     del statesjson
-
     return state['nodes']
     
 #   for name, node in state['nodes'].iteritems():
