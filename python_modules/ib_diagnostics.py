@@ -558,10 +558,10 @@ def parse_ibdiagnet ( ports, issues, contents ):
 			       ( #ignore reconnects for HCAs since they happen often for node crashes
 				   cmatch.group('counter') == 'link_down_counter' and int(cmatch.group('value')) < 3
 			       )  or
-			       ( #ignore small numbers of corruption errors
-				   str(cmatch.group('counter')) in [ 'port_rcv_errors', 'symbol_error_counter' ] and
-				   int(cmatch.group('value')) < 100
-			       )   or
+			       #( #ignore small numbers of corruption errors
+			       #    str(cmatch.group('counter')) in [ 'port_rcv_errors', 'symbol_error_counter' ] and
+			       #    int(cmatch.group('value')) < 100
+			       #)   or
 			       ( #ignore small numbers of control errors
 				   str(cmatch.group('counter')) in [ 'vl15_dropped' ] and
 				   int(cmatch.group('value')) < 100
